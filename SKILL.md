@@ -369,7 +369,7 @@ Every run ends with `$OUT/report.html`, written by `triage.py` through
   versions, method, and the info button.
 - Style (Signals to Solutions): warm beige page, one navy header card, white cards, Avenir
   Next with a Nunito Sans fallback, rust and orange accents, no dark mode, and the one-line
-  footer credit "Created by Ying Chen, UX Researcher & writer of Signals to Solutions newsletter."
+  footer credit "Created by Ying Chen, UX Researcher & writer of Signals to Solutions newsletter.", with the newsletter name linked to https://signalstosolutions.substack.com/
 
 Rules:
 

@@ -1009,7 +1009,8 @@ MAST_ART = (
     '<circle cx="440" cy="112" r="15" fill="rgba(240,139,73,.2)"/><circle cx="440" cy="112" r="6" fill="#F08B49"/>'
     '<circle cx="207" cy="191" r="3.5" fill="#CDD5E1"/></svg>'
 )
-CREDIT = '<p class="credit">Created by Ying Chen, UX Researcher &amp; writer of Signals to Solutions newsletter.</p>'
+CREDIT = ('<p class="credit">Created by Ying Chen, UX Researcher &amp; writer of '
+          '<a href="https://signalstosolutions.substack.com/" target="_blank" rel="noopener">Signals to Solutions newsletter</a>.</p>')
 
 
 def content_security_policy(script: str) -> str:

@@ -881,16 +881,19 @@ def test_report_survives_a_malformed_url_hash():
     assert "try{hashed=document.getElementById(decodeURIComponent(location.hash.slice(1)))}catch(e){}" in JS
 
 
-def test_footer_is_one_credit_line_without_outside_links(fake_jev, monkeypatch, tmp_path):
+def test_footer_is_one_credit_line_linking_the_newsletter(fake_jev, monkeypatch, tmp_path):
     import re
 
     run_triage(monkeypatch, FIXTURES / "tiny/reviews.json", default_areas(), tmp_path)
     page = (tmp_path / "report.html").read_text()
     footer = re.search(r"<footer>(.*?)</footer>", page, re.S).group(1)
-    assert footer.startswith('<p class="credit">Created by Ying Chen, UX Researcher &amp; writer of Signals to Solutions newsletter.</p>')
-    assert "subscribe" not in page.lower() and "substack" not in page.lower()
+    assert footer.startswith('<p class="credit">Created by Ying Chen, UX Researcher &amp; writer of '
+                             '<a href="https://signalstosolutions.substack.com/" target="_blank" rel="noopener">Signals to Solutions newsletter</a>.</p>')
+    assert "subscribe" not in page.lower()
     outside = {h for h in re.findall(r'href="(https?://[^"]+)"', page)}
-    assert all(h.startswith(("https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://play.google.com/store/apps/details")) for h in outside), outside
+    allowed = ("https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://play.google.com/store/apps/details",
+               "https://signalstosolutions.substack.com/")
+    assert all(h.startswith(allowed) for h in outside), outside
     assert "Signals to Solutions newsletter" in page, "SKILL.md's 'report ok' check still finds the credit"
 
 
