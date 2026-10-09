@@ -29,6 +29,29 @@ def pct(part: int | float, whole: int | float) -> str:
     return f"{(100 * part / whole):.0f}%" if whole else "0%"
 
 
+# Steam has thumbs up/down instead of stars. fetch_reviews.py stores them as rating 5 (recommended) and 1 (not
+# recommended) so code can still split by rating, and marks the app block with rating_scale "thumbs". Showing
+# those as "4.52★" would invent a star scale Steam doesn't have, so render_report sets THUMBS for the helpers below.
+THUMBS = False
+
+
+def is_thumbs(app: dict) -> bool:
+    return app.get("rating_scale") == "thumbs" or (not app.get("rating_scale") and app.get("store") == "Steam")
+
+
+def rating_label(rating) -> str:
+    if rating is None:
+        return ""
+    if THUMBS:
+        return "Recommended" if rating >= 3 else "Not recommended"
+    return f"{rating}★"
+
+
+def recommend_share(mean_rating) -> str:
+    """With ratings of only 1 and 5, the mean maps exactly to the share that recommends: (mean - 1) / 4."""
+    return "–" if mean_rating is None else f"{(mean_rating - 1) / 4:.0%}"
+
+
 # ----------------------------------------------------------------- tiny markdown
 
 
@@ -133,7 +156,7 @@ LABELS = {
     "churn risk": "Says they uninstalled, cancelled, or are switching, or will if nothing changes.",
     "since update": "Ties the problem to a recent update, new version, or redesign.",
     "repro detail": "Gives a detail an engineer could use to reproduce the problem: device, OS version, steps, or trigger.",
-    "sentiment": "How the reviewer feels, judged from their words, not their star rating.",
+    "sentiment": "How the reviewer feels, judged from their words, not their rating.",
     "excerpt": "Cut from a longer review. Open Full review to read all of it.",
 }
 FLAG_NAMES = {"reports_bug": "bug", "churn_signal": "churn risk", "requests_feature": "request"}
@@ -187,6 +210,13 @@ def excerpt_text(quote: str, full: str | None) -> str:
     return (ELLIPSIS + "&thinsp;" if before else "") + esc(core) + ("&thinsp;" + ELLIPSIS if after else "")
 
 
+def thumb_cell(rating) -> str:
+    if rating is None:
+        return ""
+    label = rating_label(rating)
+    return f'<span role="img" aria-label="{label}" title="{label}">{"👍" if rating >= 3 else "👎"}</span>'
+
+
 def quote_row(q: dict, show_area: bool = False, area_ids: dict | None = None) -> str:
     """One review as a table row: the verbatim quote first, then one column per field, like a spreadsheet."""
     area_ids = area_ids or {}
@@ -202,7 +232,7 @@ def quote_row(q: dict, show_area: bool = False, area_ids: dict | None = None) ->
         attrs += f' data-rating="{esc(q["rating"])}"'
     cells = [
         f'<td class="c-quote">{title}<p class="q-text">{excerpt_text(q["quote"], q.get("full_text"))}</p>{full}</td>',
-        f'<td class="c-stars">{esc(q["rating"]) + "★" if q.get("rating") is not None else ""}</td>',
+        f'<td class="c-stars">{thumb_cell(q.get("rating")) if THUMBS else esc(rating_label(q.get("rating")))}</td>',
         f'<td class="c-date">{esc(q.get("date") or "")}</td>',
         f'<td class="c-ver">{esc(str(q.get("version") or "").lstrip("vV"))}</td>',
     ]
@@ -433,7 +463,7 @@ def area_rows(areas: list[dict], total: int, timeline: dict | None = None) -> st
 <div class="area-body">
   <p class="covers-full"><strong>Covers:</strong> {esc(a["covers"])}</p>
   {by_time}
-  <p class="muted">{plural(a["bug_count"], "bug report")} · {plural(a["feature_request_count"], "feature request")} · mean rating {a["mean_rating"] if a["mean_rating"] is not None else "–"} · {plural(a["borderline_count"], "borderline review")} not counted</p>
+  <p class="muted">{plural(a["bug_count"], "bug report")} · {plural(a["feature_request_count"], "feature request")} · {f'{recommend_share(a["mean_rating"])} recommend' if THUMBS else f'mean rating {a["mean_rating"] if a["mean_rating"] is not None else "–"}'} · {plural(a["borderline_count"], "borderline review")} not counted</p>
   {quotes}
   {praise}
 </div>
@@ -471,7 +501,7 @@ def areas_csv(summary: dict) -> dict:
     when = day_label(timeline["split_date"]) if timeline else ""
     columns = ["Rank", "Product area", "Covers", "Priority score", "Likely rank from", "Likely rank to", "Issue reviews",
                "Share of all reviews", "Share of problem reviews", "Mean severity (0-3)", "Blocking", "Churn risk", "Since update",
-               "Bug reports", "Feature requests", "Praise reviews", "Borderline (not counted)", "Mean rating"]
+               "Bug reports", "Feature requests", "Praise reviews", "Borderline (not counted)", "Recommended" if THUMBS else "Mean rating"]
     if timeline:
         columns += ["Trend", f"Complaints before {when}", f"Complaints since {when}", "Trend p-value"]
         columns += [f'{b["label"]} complaints (of {b["reviews"]} reviews)' for b in buckets]
@@ -480,7 +510,8 @@ def areas_csv(summary: dict) -> dict:
         lo, hi = a.get("rank_range") or [rank, rank]
         row = [rank, a["name"], a["covers"], a["priority_score"], lo, hi, a["issue_count"], f'{a["issue_share"]:.1%}',
                f'{a["share_of_problem_reviews"]:.1%}', a["mean_severity"], a["blocking_count"], a["churn_count"], a["after_update_count"],
-               a["bug_count"], a["feature_request_count"], a["praise_count"], a["borderline_count"], a["mean_rating"]]
+               a["bug_count"], a["feature_request_count"], a["praise_count"], a["borderline_count"],
+               recommend_share(a["mean_rating"]) if THUMBS else a["mean_rating"]]
         if timeline:
             t = a.get("trend") or {}
             row += [{"fewer": "fewer lately", "more": "more lately"}.get(t.get("direction"), "no clear change" if t.get("p") is not None else "too few to test"),
@@ -495,13 +526,16 @@ def reviews_csv(summary: dict, area_ids: dict) -> dict:
     """One row per analyzed review, newest first, with its full text verbatim and every label."""
     names = {f"issue:{i}": f"problem with {n}" for n, i in area_ids.items()}
     yes = lambda v: "yes" if v else ""  # noqa: E731
-    columns = ["Date", "Version", "Rating", "Title", "Review (verbatim)", "Sentiment", "Severity", "Main area", "All issue areas",
+    columns = ["Date", "Version", "Recommended" if THUMBS else "Rating", "Title", "Review (verbatim)", "Sentiment", "Severity", "Main area", "All issue areas",
                "Praised areas", "Bug", "Feature request", "Churn risk", "Since update", "Repro detail", "Unsure labels", "Helpful votes", "Review ID"]
     rows = []
     for q in summary.get("all_reviews") or []:
         probs = q.get("borderline_probs") or {}
         unsure = "; ".join((names.get(k) or FLAG_NAMES.get(k) or k) + (f" ({probs[k]:.0%})" if k in probs else "") for k in q.get("borderline") or [])
-        rows.append([q.get("date"), str(q.get("version") or "").lstrip("vV"), q.get("rating"), q.get("title") or "", q.get("full_text") or q["quote"],
+        rating = q.get("rating")
+        if THUMBS and rating is not None:
+            rating = "yes" if rating >= 3 else "no"
+        rows.append([q.get("date"), str(q.get("version") or "").lstrip("vV"), rating, q.get("title") or "", q.get("full_text") or q["quote"],
                      q.get("sentiment"), q.get("severity"), q.get("area") or "", "; ".join(q.get("issue_areas") or []),
                      "; ".join(q.get("praise_areas") or []), yes(q.get("bug")), yes(q.get("feature_request")), yes(q.get("churn")),
                      yes(q.get("after_update")), yes(q.get("repro_detail")), unsure, q.get("helpful_count"), q.get("id")])
@@ -536,8 +570,9 @@ def review_filters(items: list[dict]) -> str:
         if counts[key]
     ]
     ratings = sorted({q["rating"] for q in items if q.get("rating") is not None})
-    options = '<option value="">Any rating</option>' + "".join(f'<option value="{esc(r)}">{esc(r)}★</option>' for r in ratings)
-    stars = f'<select class="f-stars" aria-label="Star rating">{options}</select>' if len(ratings) > 1 else ""
+    options = f'<option value="">{"Recommended or not" if THUMBS else "Any rating"}</option>' + "".join(
+        f'<option value="{esc(r)}">{esc(rating_label(r))}</option>' for r in (reversed(ratings) if THUMBS else ratings))
+    stars = f'<select class="f-stars" aria-label="{"Recommendation" if THUMBS else "Star rating"}">{options}</select>' if len(ratings) > 1 else ""
     return f"""<div class="filters">
 <input type="search" class="f-search" placeholder="Search the reviews, e.g. login" aria-label="Search the review text">{stars}
 <div class="f-senti" role="group" aria-label="Sentiment">{"".join(chips)}</div>
@@ -989,7 +1024,12 @@ def content_security_policy(script: str) -> str:
 
 
 def render_report(summary: dict, narrative: str | None = None) -> str:
+    global THUMBS
     app, o, jev = summary["app"], summary["overview"], summary["jev"]
+    THUMBS = is_thumbs(app)
+    rated = sum((o.get("rating_distribution") or {}).values())
+    up = (o.get("rating_distribution") or {}).get("5", 0)
+    store_share = f'Steam all-time {app["recommended_share"]:.0%}' if app.get("recommended_share") is not None else f"{up} of {rated} reviews"
     n = o["reviews_analyzed"]
     negative = o["sentiment_distribution"].get("very negative", 0) + o["sentiment_distribution"].get("negative", 0)
     date_range = " to ".join(o["date_range"]) if o.get("date_range") else "unknown dates"
@@ -1001,6 +1041,7 @@ def render_report(summary: dict, narrative: str | None = None) -> str:
     kpis = "".join(
         [
             kpi("Reviews analyzed", n, f'{o["off_topic"]} off-topic excluded' if o["off_topic"] else ""),
+            kpi("Recommended", pct(up, rated), store_share) if THUMBS else
             kpi("Mean rating", f'{o["mean_rating"]}★' if o["mean_rating"] is not None else "–", f'store avg {app["average_rating"]:.2f}★' if app.get("average_rating") else ""),
             kpi("Negative sentiment", pct(negative, n), f"{negative} reviews"),
             kpi("Report a problem", pct(o["with_problem"], n), f'{o["blocking"]} blocking'),
@@ -1026,7 +1067,7 @@ def render_report(summary: dict, narrative: str | None = None) -> str:
     all_reviews = summary.get("all_reviews") or []  # absent in summaries written before it existed
     tabs = review_tabs(
         [
-            ("all", "All reviews", "Every analyzed review, newest first. Sentiment is judged from the words, not the stars.",
+            ("all", "All reviews", "Every analyzed review, newest first. Sentiment is judged from the words, not the rating.",
              len(all_reviews), all_reviews, True, True),
             ("bugs", "Bugs", "Reviews describing something broken.", o["bugs"], summary["bugs"][:12], True, False),
             ("requests", "Feature requests", "What reviewers ask to add, bring back, or change.", o["feature_requests"], summary["feature_requests"][:12], True, False),
@@ -1048,7 +1089,8 @@ def render_report(summary: dict, narrative: str | None = None) -> str:
     if o["non_english"]:
         caveats.append(f'{o["non_english"]} reviews are not in English; Jev is most accurate on English, so treat their labels with more caution.')
     if o["rating_sentiment_mismatch"]:
-        caveats.append(f'{o["rating_sentiment_mismatch"]} reviews have a star rating that disagrees with the text (e.g. 5★ with a complaint); labels follow the text.')
+        example = "a thumbs-up with a complaint" if THUMBS else "5★ with a complaint"
+        caveats.append(f'{o["rating_sentiment_mismatch"]} reviews have a rating that disagrees with the text (e.g. {example}); labels follow the text.')
     if jev.get("failed_reviews"):
         caveats.append(f'{jev["failed_reviews"]} reviews failed to process and are excluded.')
     caveat_html = "".join(f"<li>{esc(c)}</li>" for c in caveats)
@@ -1070,7 +1112,7 @@ def render_report(summary: dict, narrative: str | None = None) -> str:
 {narrative_html}
 <div class="kpis" id="numbers">{kpis}</div>
 
-<section><h2>Sentiment</h2><p class="muted">How reviewers feel, judged from their words (not their star rating).{" Click a sentiment to read those reviews." if all_reviews else ""}</p>
+<section><h2>Sentiment</h2><p class="muted">How reviewers feel, judged from their words (not their rating).{" Click a sentiment to read those reviews." if all_reviews else ""}</p>
 {sentiment_bar(o["sentiment_distribution"], n, clickable=bool(all_reviews))}</section>
 
 <section id="areas" class="collapsible" data-view="report"><div class="sec-head"><h2>Product areas, ranked</h2>{view_tools("areas", '<button type="button" class="expand-all">Expand all</button>')}</div>

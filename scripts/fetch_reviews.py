@@ -389,6 +389,8 @@ def fetch_steam(url: str, max_reviews: int, lang: str | None, since: str | None 
         "average_rating": None,
         "rating_count": None,
         "store": "Steam",
+        "rating_scale": "thumbs",  # recommended / not recommended, stored as rating 5 / 1 below
+        "recommended_share": None,
         "sort": "most recent first",
         "country": None,
         "url": url,
@@ -402,6 +404,11 @@ def fetch_steam(url: str, max_reviews: int, lang: str | None, since: str | None 
             {"json": 1, "filter": "recent", "language": language, "num_per_page": 100, "cursor": cursor, "purchase_type": "all"}
         )
         page = get_json(f"https://store.steampowered.com/appreviews/{app_id}?{params}")
+        summary = page.get("query_summary") or {}
+        if cursor == "*" and isinstance(summary.get("total_reviews"), int) and summary["total_reviews"] > 0:
+            # All-time counts for the same language filter; only the first page carries them.
+            app["rating_count"] = summary["total_reviews"]
+            app["recommended_share"] = round(int(summary.get("total_positive") or 0) / summary["total_reviews"], 4)
         batch = page.get("reviews") or []
         if not batch:
             break
@@ -697,7 +704,10 @@ def main() -> int:
     ratings = [r["rating"] for r in reviews if r["rating"] is not None]
     dates = sorted(r["date"] for r in reviews if r.get("date"))
     print(f"app: {data['app']['name']} ({data['app'].get('store')})")
-    print(f"reviews: {len(reviews)}" + (f", mean rating {sum(ratings) / len(ratings):.2f}" if ratings else ""))
+    if ratings and data["app"].get("rating_scale") == "thumbs":
+        print(f"reviews: {len(reviews)}, {sum(r >= 3 for r in ratings) / len(ratings):.0%} recommended")
+    else:
+        print(f"reviews: {len(reviews)}" + (f", mean rating {sum(ratings) / len(ratings):.2f}" if ratings else ""))
     if args.since:
         print(f"window: {data['app']['sort']} ({fetched} fetched)")
     for note in notes + coverage_notes(data["app"], reviews, data["fetched_at"]):

@@ -16,7 +16,7 @@ what it is good at:
   off-topic / language, and which of the review's own sentences states its main problem.
   A small second pass picks, for each review quoted under an area, the sentence about that
   area. Quotes are always selected from the review, never generated.
-  300 reviews take ~6 s and cost about $0.06–0.10, depending on the number of areas; see
+  300 reviews take ~6 s and cost about USD 0.06–0.10, depending on the number of areas; see
   "How many reviews" below for larger runs.
 - **You** (Claude) tailor the product-area taxonomy to the app, sanity-check the output,
   and write the narrative for the product team from computed numbers and verbatim quotes.
@@ -61,10 +61,10 @@ only, Claude's own steps add a few minutes):
 
 | Reviews | Model time | Jev cost | Report size |
 | --- | --- | --- | --- |
-| 300 | ~6 s | ~$0.10 | ~0.5 MB |
-| 1,000 | ~20 s | ~$0.30 | ~1.2 MB |
-| 5,000 | ~1.5 min | ~$1.50 | ~5 MB |
-| 10,000 (the maximum per run) | ~3 min | ~$3 | ~10 MB |
+| 300 | ~6 s | ~USD 0.10 | ~0.5 MB |
+| 1,000 | ~20 s | ~USD 0.30 | ~1.2 MB |
+| 5,000 | ~1.5 min | ~USD 1.50 | ~5 MB |
+| 10,000 (the maximum per run) | ~3 min | ~USD 3 | ~10 MB |
 
 - **Apple App Store**: the public feed stops at the newest 500 reviews. For more, the user
   needs an App Store Connect export (Ratings and Reviews), loaded with `--from-file`.
@@ -124,7 +124,7 @@ Required: a review-page URL. Supported directly:
 | --- | --- | --- |
 | Apple App Store | `https://apps.apple.com/<cc>/app/<slug>/id<digits>` | Newest first; the public feed stops at 500 |
 | Google Play | `https://play.google.com/store/apps/details?id=<package>` | Newest first; `hl`/`gl` params set language/country |
-| Steam | `https://store.steampowered.com/app/<id>/...` | Most recent first; thumbs up/down mapped to 5★/1★ |
+| Steam | `https://store.steampowered.com/app/<id>/...` | Most recent first; thumbs up/down, stored as 5/1 and reported as % recommended (never as stars) |
 | Other pages | anything with schema.org `Review` JSON-LD | Best effort; many sites block scripts |
 | Exports | CSV/JSON from App Store Connect, Play Console, a CRM | via `--from-file` |
 
@@ -153,7 +153,7 @@ If the user gives a start date ("since August 1"), add `--since YYYY-MM-DD` here
 in step 3. The fetcher pages back to that date and, when the window holds more than `--max`
 reviews, keeps an even sample across it instead of the newest few days (it prints
 `window: evenly sampled from N reviews since ...`). Say in the caveats how many reviews the
-window held, and offer to analyze all of them with a larger `--max` (about $0.03 per 100
+window held, and offer to analyze all of them with a larger `--max` (about USD 0.03 per 100
 reviews, up to 10,000). The Apple feed only reaches back 500 reviews.
 
 **If it exits with code 3 (the store returned no reviews)**, nothing was written; don't

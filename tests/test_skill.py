@@ -997,3 +997,47 @@ def test_output_survives_a_non_utf8_console(tmp_path):
         assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
         assert "★".encode() in done.stdout
 
+
+
+def test_skill_md_has_no_argument_placeholders():
+    """Claude Code replaces $0, $1, ... and $ARGUMENTS in SKILL.md with the skill's arguments.
+
+    In testing, "/app-review-triage <Steam link>" turned "~$0.10" into "~Steam.10" and "~$1.50" into "~review.50".
+    """
+    import re
+
+    from conftest import SKILL_DIR
+
+    text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
+    assert not re.findall(r"\$(?:\d|ARGUMENTS)", text), "write prices as 'USD 0.10', not with a dollar sign before a digit"
+
+
+def test_steam_reports_recommended_share_not_stars(monkeypatch, tmp_path, fake_jev):
+    """Steam has thumbs up/down only: the report and brief must not invent a star scale from the stored 5 / 1."""
+    run_triage(monkeypatch, FIXTURES / "steam_game/reviews.json", default_areas(), tmp_path)
+    page = (tmp_path / "report.html").read_text(encoding="utf-8")
+    brief = (tmp_path / "brief.md").read_text(encoding="utf-8")
+    assert '<div class="kpi-label">Recommended</div>' in page and "Mean rating" not in page
+    assert "★" not in page.split("<style>")[0] + page.split("</style>")[-1].split("<script")[0], "no star ratings anywhere in the body"
+    assert 'aria-label="Recommended"' in page and '<option value="5">Recommended</option>' in page
+    assert "Recommended " in brief and "Mean rating" not in brief and "★" not in brief
+    assert "(not recommended" in brief or "(recommended" in brief, "quote labels say recommended / not recommended"
+
+
+def test_steam_fetch_keeps_the_all_time_recommend_share(monkeypatch, tmp_path):
+    import fetch_reviews
+
+    def fake_get_json(url: str) -> dict:
+        if "appdetails" in url:
+            return {"7": {"data": {"name": "Fake"}}}
+        if "cursor=%2A" in url:
+            return {"query_summary": {"total_positive": 800, "total_reviews": 1000},
+                    "reviews": [{"recommendationid": "1", "voted_up": False, "review": "Crashes on launch", "timestamp_created": 1790000000}],
+                    "cursor": "next"}
+        return {"query_summary": {"num_reviews": 0}, "reviews": [], "cursor": "next"}
+
+    monkeypatch.setattr(fetch_reviews, "get_json", fake_get_json)
+    data = fetch_reviews.fetch_steam("https://store.steampowered.com/app/7/x", 300, None)
+    assert data["app"]["rating_scale"] == "thumbs"
+    assert (data["app"]["rating_count"], data["app"]["recommended_share"]) == (1000, 0.8)
+    assert data["reviews"][0]["rating"] == 1
