@@ -82,13 +82,29 @@ In Claude Code, run `/app-review-triage` or just ask:
 
 > Here's our App Store page: https://apps.apple.com/us/app/... — what should the product team fix?
 
-Before running anything, Claude asks three things and waits for your answers:
+Claude checks in with you three times, so you know what goes in and what comes back.
+
+**Before running anything**, Claude asks four things and waits for your answers:
 
 1. whether your TypeSafe API key is set as `TYPESAFE_API_KEY` (never the key itself; don't
    paste it into chat),
 2. which product and review page (or export) to use,
-3. how many reviews to analyze: 300 by default, or any number up to 10,000 (or every review
+3. what you want Jev to categorize: Claude explains the standard labels every review gets
+   (sentiment, severity, bug, feature request, churn, "after an update", and a few more), then
+   asks whether to draft the product areas from the reviews, use the areas you already
+   track, or shape them around one question you have,
+4. how many reviews to analyze: 300 by default, or any number up to 10,000 (or every review
    since a date), with the time, cost, and limits below.
+
+Claude then repeats your answers back before fetching anything.
+
+**Before calling Jev** (the only paid step), Claude shows the run plan and waits for your go:
+the reviews it fetched and their dates, the product areas Jev will be asked about, what text
+goes to TypeSafe and to Anthropic, the estimated time and cost, and the files you'll get.
+
+**When it delivers the report**, Claude recaps what you asked for against what was analyzed:
+review counts, dates, any limit it hit, areas it changed after the plan, labels left out of
+counts as borderline, and the actual Jev usage.
 
 ## How many reviews
 
