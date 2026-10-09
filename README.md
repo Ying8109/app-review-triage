@@ -18,6 +18,8 @@ areas, and TypeSafe's current pricing. One run can potentially handle up to 10,0
 
 **Website:** https://ying8109.github.io/app-review-triage/ has a one-minute intro video and a
 [sample report](https://ying8109.github.io/app-review-triage/sample-report.html) you can open in your browser.
+The sample report uses public Google Play reviews of Todoist, shown without reviewer names.
+To have a review removed, [open an issue](https://github.com/Ying8109/app-review-triage/issues/new).
 
 ## Output
 
