@@ -13,7 +13,7 @@ CSV/JSON export of reviews), and Claude:
 
 In our test runs, 300 reviews took about 6 seconds of model time and roughly $0.06–0.10 in
 Jev usage. Treat these as estimates: cost depends on review length, the number of product
-areas, and TypeSafe's current pricing. One run handles up to 10,000 reviews; see
+areas, and TypeSafe's current pricing. One run can potentially handle up to 10,000 reviews; see
 [How many reviews](#how-many-reviews).
 
 **Website:** https://ying8109.github.io/app-review-triage/ has a one-minute intro video and a
