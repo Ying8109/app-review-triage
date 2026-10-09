@@ -31,6 +31,7 @@ import json
 import os
 import random
 import re
+import shlex
 import sys
 import time
 from collections import Counter, defaultdict
@@ -889,6 +890,27 @@ def fetch_notes(data: dict) -> list[str]:
     return [_text(n, 600) for n in notes if isinstance(n, str) and n.strip()][:5]
 
 
+def report_link_lines(report: Path) -> list[str]:
+    """Ready-to-use ways to open the report, so nobody has to build a link to a path with spaces by hand.
+
+    The file:// link is percent-encoded (spaces become %20, parentheses %28/%29), which keeps it one valid
+    Markdown link target that terminals and chat apps can open; the command opens it in the default browser.
+    """
+    path = report.resolve()
+    if sys.platform == "darwin":
+        command = f"open {shlex.quote(str(path))}"
+    elif sys.platform.startswith("win"):
+        command = f'python -m webbrowser -t "{path.as_uri()}"'  # works from cmd, PowerShell, and Git Bash alike
+    else:
+        command = f"xdg-open {shlex.quote(str(path))}"
+    size = path.stat().st_size / 1_000_000 if path.exists() else 0
+    return [
+        f"report: {path} ({size:.1f} MB)",
+        f"report link: [report.html]({path.as_uri()})",
+        f"open in browser: {command}",
+    ]
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("reviews", type=Path, help="reviews.json from fetch_reviews.py")
@@ -1015,6 +1037,8 @@ def main() -> int:
         if s["issue_count"]:
             print(f"  {s['name']:<40} priority {s['priority_score']:>6}  issues {s['issue_count']:>3} ({s['issue_share']:.0%})  sev {s['mean_severity']}  churn {s['churn_count']}")
     print(f"wrote {args.out_dir}/report.html, brief.md, summary.json, review_labels.csv")
+    for line in report_link_lines(args.out_dir / "report.html"):
+        print(line)
     if narrative:
         unknown = numbers_not_in_brief(narrative, (args.out_dir / "brief.md").read_text(encoding="utf-8"))
         if unknown:

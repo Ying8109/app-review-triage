@@ -889,3 +889,35 @@ def test_footer_is_one_credit_line_without_outside_links(fake_jev, monkeypatch, 
     outside = {h for h in re.findall(r'href="(https?://[^"]+)"', page)}
     assert all(h.startswith(("https://fonts.googleapis.com", "https://fonts.gstatic.com", "https://play.google.com/store/apps/details")) for h in outside), outside
     assert "Signals to Solutions newsletter" in page, "SKILL.md's 'report ok' check still finds the credit"
+
+
+def test_report_link_is_printed_ready_to_click(fake_jev, monkeypatch, tmp_path, capsys):
+    """Links Claude built by hand came out as <path with spaces> or %20 paths without a scheme, so some didn't open."""
+    import re
+    import shlex
+    from pathlib import Path
+    from urllib.parse import unquote, urlparse
+
+    out = tmp_path / "my reviews (Q4) – café"
+    run_triage(monkeypatch, FIXTURES / "tiny/reviews.json", default_areas(), out)
+    printed = capsys.readouterr().out
+    report = (out / "report.html").resolve()
+    link = re.search(r"^report link: \[report\.html\]\((\S+)\)$", printed, re.M)
+    assert link, printed
+    uri = urlparse(link.group(1))
+    assert uri.scheme == "file" and " " not in link.group(1) and "(" not in link.group(1)
+    assert Path(unquote(uri.path)) == report, "the link points at the report that was written"
+    assert re.search(rf"^report: {re.escape(str(report))} \(\d+\.\d MB\)$", printed, re.M)
+    command = re.search(r"^open in browser: (.+)$", printed, re.M).group(1)
+    if sys.platform != "win32":
+        assert shlex.split(command)[-1] == str(report), "the path survives shell quoting"
+
+
+@pytest.mark.parametrize("platform, starts", [("darwin", "open "), ("linux", "xdg-open "), ("win32", 'python -m webbrowser -t "file://')])
+def test_open_command_fits_the_platform(monkeypatch, tmp_path, platform, starts):
+    report = tmp_path / "a b's" / "report.html"
+    report.parent.mkdir()
+    report.write_text("x")
+    monkeypatch.setattr(sys, "platform", platform)
+    command = triage.report_link_lines(report)[2].removeprefix("open in browser: ")
+    assert command.startswith(starts), command

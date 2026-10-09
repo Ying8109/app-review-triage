@@ -52,8 +52,9 @@ review pages, or run any script until they reply:
    and the link instead of asking again.
 3. **How many reviews to analyze.** Tell them what one run can handle (the table below), then
    ask. Options: "300 (default)", "1,000", "5,000", "All since a date" (they give the date).
-   If their message already says how many, or a date, confirm it instead. If they ask for
-   more than a source allows, say so now, not after fetching.
+   Say they can also give any other number, up to 10,000 per run. If their message already
+   says how many, or a date, confirm it instead. If they ask for more than a source allows
+   (Apple's feed stops at 500), say so now, not after fetching.
 
 How many reviews one run handles (measured live with `jev-1.13.0` and ~18 areas; model time
 only, Claude's own steps add a few minutes):
@@ -134,7 +135,9 @@ only if the user hinted at them: country, and product areas or features they alr
 uv run "$SKILL_DIR/scripts/fetch_reviews.py" "<url>" --max <N> --out "$OUT/reviews.json"
 ```
 
-`<N>` is the answer to Start here question 3 (300 if they took the default). It prints the
+`<N>` is the answer to Start here question 3 (300 if they took the default; any number up to
+10,000). For more than ~2,000 reviews, give the fetch a 10-minute timeout (`timeout: 600000`
+on the Bash call): 10,000 Steam reviews took about a minute, and stores can be slower. It prints the
 app name, review count, mean rating, and date range. Note the date range: for popular apps,
 the 300 newest App Store reviews can span only a day or two, while thousands of Google Play
 reviews can span years. If it prints a `note:` line (fewer reviews than requested, Apple's
@@ -384,8 +387,25 @@ When publishing or sharing the report, use `report.html` exactly as rendered.
 
 ### 7. Deliver
 
-In chat, start with a clickable link to the report, a markdown link to its full path:
-`[report.html](<absolute path to $OUT/report.html>)`. Then tell the user how many reviews were
+Step 5's command ends by printing three lines; use them as printed, never a link you built yourself:
+
+```
+report: /path/to/review-triage/<app>-<date>/report.html (0.6 MB)
+report link: [report.html](file:///path/to/review-triage/...%20.../report.html)
+open in browser: open '/path/to/review-triage/<app>-<date>/report.html'
+```
+
+Open the report for them right away: run the `open in browser:` command as printed (`open` on
+macOS, `xdg-open` on Linux, Python's `webbrowser` on Windows). Skip this only if they asked
+you not to, or the session runs on a remote machine (SSH, a cloud session), where a browser
+can't reach their screen. The default browser is the reliable way to open a report: some
+in-app previews refuse local files over about half a megabyte, which most reports are. If the
+command fails, say so in one line.
+
+In chat, start with the `report link:` Markdown link exactly as printed (a `file://` link with
+spaces and other characters already encoded, so it stays clickable), then the plain `report:`
+path in backticks for copying, and say it's open in their browser. Reports of 5,000+ reviews
+are 5–10 MB and take a few seconds to open. Then tell the user how many reviews were
 analyzed and over what dates (and any limit you hit, such as Apple's 500), the top 3 issues
 with counts, and the roughly tied group, and link the other files:
 
@@ -401,7 +421,7 @@ with counts, and the roughly tied group, and link the other files:
   or importing into a sheet or BI tool.
 - `brief.md` / `summary.json`: the aggregates behind the report.
 
-Offer to open `report.html`, or to publish it as a shareable page. Before publishing, say what
+Offer to publish `report.html` as a shareable page if they want one. Before publishing, say what
 it contains: every analyzed review in full. For public store reviews that is public text, but
 reviewers sometimes include personal details, and an export (support tickets, a CRM) may be
 private, so publish only if the user confirms.

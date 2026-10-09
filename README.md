@@ -18,7 +18,7 @@ up to 10,000 reviews; see [How many reviews](#how-many-reviews).
 
 - `report.html`: a self-contained report with sentiment, ranked areas and their strongest
   quotes, bugs, feature requests, churn signals, version breakdown, and borderline cases.
-  Claude ends with a clickable link to it.
+  Claude opens it in your default browser and gives you a clickable link to it.
 - `review_labels.csv`: one row per review with every label and probability.
 - `brief.md` / `summary.json`: the aggregates behind the report.
 
@@ -77,7 +77,8 @@ Before running anything, Claude asks three things and waits for your answers:
 1. whether your TypeSafe API key is set as `TYPESAFE_API_KEY` (never the key itself; don't
    paste it into chat),
 2. which product and review page (or export) to use,
-3. how many reviews to analyze, with the time, cost, and limits below.
+3. how many reviews to analyze: 300 by default, or any number up to 10,000 (or every review
+   since a date), with the time, cost, and limits below.
 
 ## How many reviews
 
