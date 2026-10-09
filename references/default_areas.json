@@ -1,0 +1,74 @@
+[
+  {
+    "id": "stability",
+    "name": "Stability",
+    "covers": "The app crashing, freezing, force-closing, not opening, or getting stuck",
+    "not_for": "Slowness while the app still works (performance)"
+  },
+  {
+    "id": "performance",
+    "name": "Speed and resource use",
+    "covers": "Slow loading, lag, stutter, long waits, battery drain, heat, storage or data usage",
+    "not_for": "Crashes or freezes (stability)"
+  },
+  {
+    "id": "account_login",
+    "name": "Account and login",
+    "covers": "Sign-up, sign-in, passwords, verification codes, being logged out, account access, bans, or deleting the account",
+    "not_for": "Payments or subscriptions"
+  },
+  {
+    "id": "pricing_billing",
+    "name": "Pricing, subscription, and billing",
+    "covers": "Price, paywalls, free-tier limits, subscriptions, trials, charges, refunds, or cancelling",
+    "not_for": "Advertisements"
+  },
+  {
+    "id": "ads",
+    "name": "Advertisements",
+    "covers": "How many ads appear, how long or loud they are, or how intrusive they feel",
+    "not_for": "Paying to remove ads, which is pricing"
+  },
+  {
+    "id": "ui_design",
+    "name": "Design and navigation",
+    "covers": "Layout, visual design, navigation, finding things, readability, text size, accessibility, or a redesign",
+    "not_for": "Missing functionality that is not about how existing features look or are reached"
+  },
+  {
+    "id": "content_quality",
+    "name": "Content quality and relevance",
+    "covers": "The quality, accuracy, quantity, or relevance of the content, catalog, results, or recommendations the app provides",
+    "not_for": "How the content is laid out on screen"
+  },
+  {
+    "id": "notifications",
+    "name": "Notifications",
+    "covers": "Push notifications, reminders, or emails being too many, missing, late, or impossible to turn off",
+    "not_for": "In-app ads"
+  },
+  {
+    "id": "sync_data",
+    "name": "Data, sync, and offline",
+    "covers": "Lost data or progress, saving, syncing between devices, backups, or offline use",
+    "not_for": "Account access problems"
+  },
+  {
+    "id": "compatibility",
+    "name": "Devices and integrations",
+    "covers": "Specific phones, tablets, OS versions, watches, cars, TVs, speakers, or connections to other apps and services",
+    "not_for": "Problems that happen on every device"
+  },
+  {
+    "id": "customer_support",
+    "name": "Customer support",
+    "covers": "Contacting the company, response times, or how helpful support or the help center was",
+    "not_for": "The product problem the reviewer contacted support about"
+  },
+  {
+    "id": "privacy_security",
+    "name": "Privacy and security",
+    "covers": "Permissions, tracking, data collection or sharing, hacked accounts, scams, or safety concerns",
+    "not_for": "Forgotten passwords or ordinary login trouble"
+  }
+]

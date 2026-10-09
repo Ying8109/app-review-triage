@@ -1,0 +1,4 @@
+# Only needed without uv (uv reads each script's own dependency list).
+# python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+typesafe-sdk>=0.7.2,<0.8
+google-play-scraper>=1.2.7,<2

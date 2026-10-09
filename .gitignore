@@ -1,0 +1,23 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+.DS_Store
+.env
+.env.*
+# Run outputs hold review text and cached model answers; keep them out of the repo.
+review-triage/
+*.partial
+# The same files when a run's output folder is somewhere else in the repo.
+reviews.json
+areas.json
+sample.txt
+jev_raw.jsonl
+jev_quotes.jsonl
+review_labels.csv
+summary.json
+brief.md
+narrative.md
+report.html
+extracted.json
