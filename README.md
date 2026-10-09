@@ -63,6 +63,9 @@ it to your shell profile (`~/.zshrc` or `~/.bashrc`) so Claude Code can see it:
 export TYPESAFE_API_KEY="your-key-here"
 ```
 
+On Windows, set it once as a user environment variable instead
+(`setx TYPESAFE_API_KEY "your-key-here"` in a terminal), then restart Claude Code.
+
 Open a new terminal (or `source` your profile) and start Claude Code from it. In the Claude
 desktop app, which doesn't start from a terminal, Claude runs the model steps through an
 interactive shell so they can read the key from your profile. Never paste the key into a

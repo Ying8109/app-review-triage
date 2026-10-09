@@ -43,7 +43,7 @@ from statistics import mean
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import jev_questions as Q  # noqa: E402
-from fetch_reviews import coverage_notes, iso_date, version_text  # noqa: E402
+from fetch_reviews import coverage_notes, iso_date, utf8_output, version_text  # noqa: E402
 from report_html import render_report, version_key  # noqa: E402
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
@@ -900,7 +900,8 @@ def report_link_lines(report: Path) -> list[str]:
     if sys.platform == "darwin":
         command = f"open {shlex.quote(str(path))}"
     elif sys.platform.startswith("win"):
-        command = f'python -m webbrowser -t "{path.as_uri()}"'  # works from cmd, PowerShell, and Git Bash alike
+        # This interpreter, not `python` on PATH: a uv-only install often has none. Runs in Git Bash (Claude Code's shell on Windows) and cmd.
+        command = f'"{sys.executable}" -m webbrowser -t "{path.as_uri()}"'
     else:
         command = f"xdg-open {shlex.quote(str(path))}"
     size = path.stat().st_size / 1_000_000 if path.exists() else 0
@@ -912,6 +913,7 @@ def report_link_lines(report: Path) -> list[str]:
 
 
 def main() -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("reviews", type=Path, help="reviews.json from fetch_reviews.py")
     parser.add_argument("--areas", type=Path, default=DEFAULT_AREAS, help="product-area taxonomy JSON")

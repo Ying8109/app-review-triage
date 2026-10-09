@@ -1,7 +1,11 @@
+# /// script
+# requires-python = ">=3.9"
+# dependencies = []
+# ///
 """Print the app description and a sample of critical and positive reviews, for drafting product areas.
 
 Usage:
-  python3 sample_reviews.py reviews.json [--n 30] [--positive 15] [--max-rating 3]
+  uv run sample_reviews.py reviews.json [--n 30] [--positive 15] [--max-rating 3]
 """
 
 from __future__ import annotations
@@ -9,10 +13,14 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import sys
 from pathlib import Path
 
 
 def main() -> None:
+    for stream in (sys.stdout, sys.stderr):  # UTF-8 even where Windows would default to cp1252 (★, app names)
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser()
     parser.add_argument("reviews", type=Path)
     parser.add_argument("--n", type=int, default=30)

@@ -169,6 +169,14 @@ def window(reviews: list[dict], since: str, max_reviews: int) -> tuple[list[dict
     return [inside[int(i * step)] for i in range(max_reviews)], f"evenly sampled from {len(inside):,} reviews since {since}"
 
 
+def utf8_output() -> None:
+    """Print UTF-8 everywhere. On Windows, output sent to a file or pipe defaults to the ANSI code page,
+    which can't encode ★ or most app names, and print() would crash after the work is done."""
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 SHORT_WINDOW_DAYS = 7  # reviews spanning fewer calendar days than this get a coverage note
 VERSION_NOTE_MIN = 10  # reviews with a version needed before the current-version check means anything
 
@@ -352,7 +360,8 @@ def fetch_google_play(url: str, max_reviews: int, country: str | None, lang: str
             "rating": int(r["score"]),
             "title": "",
             "text": clean(r.get("content")),
-            "date": r["at"].replace(tzinfo=timezone.utc).isoformat() if r.get("at") else None,
+            # google-play-scraper builds `at` with datetime.fromtimestamp, i.e. naive local time.
+            "date": r["at"].astimezone(timezone.utc).isoformat() if r.get("at") else None,
             "version": r.get("appVersion") or r.get("reviewCreatedVersion"),
             "helpful_count": int(r.get("thumbsUpCount") or 0),
         }
@@ -522,7 +531,16 @@ def load_file(path: Path, app_name: str | None) -> dict:
         raw = path.read_bytes()
         # Play Console review exports are UTF-16; most other tools write UTF-8, often with a BOM.
         encoding = "utf-16" if raw[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig"
-        rows = list(csv.DictReader(io.StringIO(raw.decode(encoding), newline="")))
+        try:
+            text = raw.decode(encoding)
+        except UnicodeDecodeError:
+            text = raw.decode("cp1252", errors="replace")  # Excel on Windows saves "CSV" in the ANSI code page
+        try:
+            # Excel in many European locales separates columns with semicolons.
+            dialect = csv.Sniffer().sniff(text[:20000], delimiters=",;\t")
+        except csv.Error:
+            dialect = csv.excel
+        rows = list(csv.DictReader(io.StringIO(text, newline=""), dialect=dialect))
         app = {"name": app_name or path.stem}
     else:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -535,6 +553,7 @@ def load_file(path: Path, app_name: str | None) -> dict:
         rows = []
     if app_name:
         app["name"] = app_name
+    app.setdefault("name", path.stem)
     reviews = []
     for i, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -580,11 +599,12 @@ def fetch(url: str, max_reviews: int, country: str | None, lang: str | None, sin
 
 
 def main() -> int:
+    utf8_output()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("url", nargs="?")
     parser.add_argument("--from-file", type=Path, help="normalize a local CSV/JSON export instead of fetching")
     parser.add_argument("--app-name", help="app name when loading from a file")
-    parser.add_argument("--max", type=int, default=300, help="maximum reviews to keep (default 300)")
+    parser.add_argument("--max", type=int, help="maximum reviews to keep (default 300 for a link; every review in a --from-file export)")
     parser.add_argument("--country", help="store country code, e.g. us, gb (default: from URL or us)")
     parser.add_argument("--lang", help="review language for Google Play/Steam (default: from URL or en)")
     parser.add_argument("--since", help="only reviews on/after this date (YYYY-MM-DD); pages back to it, then samples --max evenly across the window")
@@ -594,6 +614,10 @@ def main() -> int:
 
     if not args.url and not args.from_file:
         parser.error("give a URL or --from-file")
+    if args.max is not None and args.max < 1:
+        parser.error("--max must be at least 1")
+    if args.max is None and not args.from_file:
+        args.max = 300
     try:
         # With --since, page back far enough to cover the window, and never fetch fewer than --max asks for.
         limit = max(args.fetch_limit, args.max) if args.since else args.max
@@ -630,7 +654,13 @@ def main() -> int:
     fetched = len(reviews)
     oldest = min((r["date"] for r in reviews if r.get("date")), default=None)
     if args.since:
-        reviews, data["app"]["sort"] = window(reviews, args.since, args.max)
+        reviews, data["app"]["sort"] = window(reviews, args.since, args.max or len(reviews))
+    elif args.from_file and args.max and len(reviews) > args.max:
+        # Like a --since window: an even sample across the export's dates, not just its first rows.
+        ordered = sorted(reviews, key=lambda r: r.get("date") or "", reverse=True)
+        step = len(ordered) / args.max
+        reviews = [ordered[int(i * step)] for i in range(args.max)]
+        data["app"]["sort"] = f"evenly sampled {args.max:,} of the file's {fetched:,} reviews"
     data["reviews"] = reviews
     if not reviews:
         # An empty reviews.json would run through triage as a report about nothing.
@@ -655,6 +685,8 @@ def main() -> int:
             notes.append(f"{APPLE_FEED_NOTE} Got {len(reviews)} of the {args.max} requested.")
         else:
             notes.append(f"only {len(reviews)} of the {args.max} requested reviews were available (the store had no more, or some were duplicates or empty)")
+    if args.from_file and not args.since and len(reviews) < fetched:
+        notes.append(f"the export held {fetched:,} reviews; {len(reviews):,} were evenly sampled across its dates (--max)")
     if undated:
         notes.append(f"{undated} reviews had dates that aren't YYYY-MM-DD (or are implausible), so they count as undated in the timeline")
     data["fetch_notes"] = notes

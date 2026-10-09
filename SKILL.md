@@ -104,9 +104,13 @@ Prerequisites:
    Never ask them to paste the key into chat. Steps 1 and 2 don't need the key, so you can
    finish them first, then stop and wait. Don't substitute keyword counts or your own
    reading of the reviews for the triage. If the key lives in their shell profile and
-   your shell doesn't see it, run those steps through an interactive shell. Export the
-   variables first, and single-quote the inner command so the inner shell expands them:
+   your shell doesn't see it, run those steps through an interactive shell of the kind
+   whose profile holds the key: `zsh -ic` for `~/.zshrc` (the macOS default), `bash -ic`
+   for `~/.bashrc` (most Linux). Export the variables first, and single-quote the inner
+   command so the inner shell expands them:
    `export SKILL_DIR=... OUT=...; zsh -ic 'uv run "$SKILL_DIR/scripts/triage.py" ...'`.
+   On Windows, ask the user to set the key as a user environment variable and restart
+   Claude Code instead.
 3. If `triage.py` stops with a 402, the TypeSafe organization is out of credits. Rerunning
    won't help; ask the user to add credits at https://console.typesafe.ai/settings/billing.
    The script stops without rewriting any output, and answers that arrived before the 402 are
@@ -177,7 +181,7 @@ the company invited (mostly 5★); for a question about complaints, a star filte
 ```
 
 ```bash
-uv run "$SKILL_DIR/scripts/fetch_reviews.py" --from-file "$OUT/extracted.json" --app-name "<App>" --out "$OUT/reviews.json"
+uv run "$SKILL_DIR/scripts/fetch_reviews.py" --from-file "<export or $OUT/extracted.json>" --app-name "<App>" --max <N> --out "$OUT/reviews.json"
 ```
 
 Only `text` is required; a plain list of reviews also works, but loses the link and order.
@@ -193,7 +197,7 @@ then fell from 9 to 2. Read the app description and a sample of critical and pos
 reviews:
 
 ```bash
-python3 "$SKILL_DIR/scripts/sample_reviews.py" "$OUT/reviews.json" > "$OUT/sample.txt"
+uv run "$SKILL_DIR/scripts/sample_reviews.py" "$OUT/reviews.json" > "$OUT/sample.txt"
 ```
 
 Then read `$OUT/sample.txt` and write `$OUT/areas.json`, starting from

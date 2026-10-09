@@ -6,8 +6,11 @@ No real Jev calls and no network: a fake model answers, so the suite runs in sec
 from __future__ import annotations
 
 import json
+import os
 import random
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
 
@@ -913,7 +916,7 @@ def test_report_link_is_printed_ready_to_click(fake_jev, monkeypatch, tmp_path, 
         assert shlex.split(command)[-1] == str(report), "the path survives shell quoting"
 
 
-@pytest.mark.parametrize("platform, starts", [("darwin", "open "), ("linux", "xdg-open "), ("win32", 'python -m webbrowser -t "file://')])
+@pytest.mark.parametrize("platform, starts", [("darwin", "open "), ("linux", "xdg-open "), ("win32", f'"{sys.executable}" -m webbrowser -t "file://')])
 def test_open_command_fits_the_platform(monkeypatch, tmp_path, platform, starts):
     report = tmp_path / "a b's" / "report.html"
     report.parent.mkdir()
@@ -921,3 +924,76 @@ def test_open_command_fits_the_platform(monkeypatch, tmp_path, platform, starts)
     monkeypatch.setattr(sys, "platform", platform)
     command = triage.report_link_lines(report)[2].removeprefix("open in browser: ")
     assert command.startswith(starts), command
+
+
+def test_max_samples_an_export_evenly(monkeypatch, tmp_path, capsys):
+    import fetch_reviews
+
+    rows = [{"text": f"review {i}", "rating": 3, "date": f"2026-{1 + i // 28:02d}-{1 + i % 28:02d}"} for i in range(200)]
+    (tmp_path / "x.json").write_text(json.dumps(rows))
+    argv = ["fetch_reviews.py", "--from-file", str(tmp_path / "x.json"), "--app-name", "App", "--out", str(tmp_path / "r.json")]
+    monkeypatch.setattr(sys, "argv", argv + ["--max", "50"])
+    assert fetch_reviews.main() == 0
+    data = json.loads((tmp_path / "r.json").read_text())
+    dates = [r["date"] for r in data["reviews"]]
+    assert len(dates) == 50 and dates[0] == "2026-08-04" and dates[-1] <= "2026-01-05"  # spans the whole export
+    assert "200 reviews; 50 were evenly sampled" in capsys.readouterr().out
+    monkeypatch.setattr(sys, "argv", argv)  # without --max, an export is kept whole
+    assert fetch_reviews.main() == 0
+    assert len(json.loads((tmp_path / "r.json").read_text())["reviews"]) == 200
+
+
+def test_excel_csv_exports_load(tmp_path):
+    import fetch_reviews
+
+    (tmp_path / "ansi.csv").write_bytes("Review Body,Star Rating\nTrès lent à charger,2\n".encode("cp1252"))
+    assert fetch_reviews.load_file(tmp_path / "ansi.csv", "App")["reviews"][0]["text"] == "Très lent à charger"
+    (tmp_path / "semi.csv").write_text("Review Body;Star Rating;Last Updated\nSync is slow, again;2;2026-10-01\nLove it;5;2026-10-02\n", encoding="utf-8")
+    reviews = fetch_reviews.load_file(tmp_path / "semi.csv", "App")["reviews"]
+    assert [(r["text"], r["rating"]) for r in reviews] == [("Sync is slow, again", 2), ("Love it", 5)]
+
+
+def test_json_app_block_without_a_name(monkeypatch, tmp_path):
+    import fetch_reviews
+
+    (tmp_path / "x.json").write_text(json.dumps({"app": {"store": "Trustpilot"}, "reviews": [{"text": "hello there"}]}))
+    monkeypatch.setattr(sys, "argv", ["fetch_reviews.py", "--from-file", str(tmp_path / "x.json"), "--out", str(tmp_path / "r.json")])
+    assert fetch_reviews.main() == 0
+    assert json.loads((tmp_path / "r.json").read_text())["app"]["name"] == "x"
+
+
+def test_play_review_times_are_converted_to_utc(monkeypatch):
+    import time
+
+    import google_play_scraper
+
+    import fetch_reviews
+
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
+    time.tzset()
+    try:
+        # The scraper builds `at` with datetime.fromtimestamp: naive local time.
+        at = datetime.fromtimestamp(datetime(2026, 10, 1, 3, 0, tzinfo=timezone.utc).timestamp())  # noqa: DTZ006
+        review = {"reviewId": "a", "score": 2, "content": "Slow", "at": at, "thumbsUpCount": 0}
+        monkeypatch.setattr(google_play_scraper, "app", lambda *a, **k: {"title": "App"})
+        monkeypatch.setattr(google_play_scraper, "reviews", lambda *a, **k: ([review], None))
+        data = fetch_reviews.fetch_google_play("https://play.google.com/store/apps/details?id=com.x", 1, None, None)
+        assert data["reviews"][0]["date"] == "2026-10-01T03:00:00+00:00"
+    finally:
+        monkeypatch.delenv("TZ")
+        time.tzset()
+
+
+def test_output_survives_a_non_utf8_console(tmp_path):
+    import subprocess
+
+    rows = [{"text": "Crashes on launch", "rating": 1, "date": "2026-10-01"}, {"text": "Great", "rating": 5, "date": "2026-10-02"}]
+    (tmp_path / "x.json").write_text(json.dumps({"app": {"name": "日本語アプリ ★"}, "reviews": rows}, ensure_ascii=False), encoding="utf-8")
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252"}
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    for cmd in ([str(scripts / "fetch_reviews.py"), "--from-file", str(tmp_path / "x.json"), "--out", str(tmp_path / "r.json")],
+                [str(scripts / "sample_reviews.py"), str(tmp_path / "r.json")]):
+        done = subprocess.run([sys.executable, *cmd], env=env, capture_output=True, check=False)
+        assert done.returncode == 0, done.stderr.decode("utf-8", "replace")
+        assert "★".encode() in done.stdout
+
