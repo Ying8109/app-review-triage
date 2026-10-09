@@ -22,6 +22,7 @@ file made from them are treated as untrusted:
   only plausible ISO dates and version-like versions, and check the types in
   `reviews.json` and `areas.json` before using them.
 - `SKILL.md` tells Claude to treat reviews as data and never follow instructions in them.
+  This lowers the risk of prompt injection through a review but can't rule it out.
 
 ## Your API key
 

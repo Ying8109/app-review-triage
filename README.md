@@ -11,8 +11,12 @@ CSV/JSON export of reviews), and Claude:
    "since an update" regressions,
 4. ranks the areas in code and writes a narrative with verbatim quotes.
 
-300 reviews take about 6 seconds of model time and cost roughly $0.06–0.10. One run handles
-up to 10,000 reviews; see [How many reviews](#how-many-reviews).
+In our test runs, 300 reviews took about 6 seconds of model time and roughly $0.06–0.10 in
+Jev usage. Treat these as estimates: cost depends on review length, the number of product
+areas, and TypeSafe's current pricing. One run handles up to 10,000 reviews; see
+[How many reviews](#how-many-reviews).
+
+A one-page overview with a one-minute intro video is in [`docs/`](docs/index.html).
 
 ## Output
 
@@ -82,8 +86,9 @@ Before running anything, Claude asks three things and waits for your answers:
 
 ## How many reviews
 
-Measured live with `jev-1.13.0` and about 18 product areas. Model time only; Claude's own
-steps (drafting product areas, writing the summary) add a few minutes.
+Estimates from test runs with `jev-1.13.0` and about 18 product areas. Your numbers will vary
+with review length, the number of product areas, and TypeSafe's current pricing. Model time
+only; Claude's own steps (drafting product areas, writing the summary) add a few minutes.
 
 | Reviews | Model time | Jev cost | Report size |
 | --- | --- | --- | --- |
@@ -97,8 +102,8 @@ steps (drafting product areas, writing the summary) add a few minutes.
 - Google Play and Steam: up to 10,000 per run. Exports: any size up to 10,000.
 - Over 10,000, `triage.py` stops before calling the model and suggests an even sample across
   a date window (`--since`). `--allow-large` runs them all; the report gets slow to open.
-- Answers are saved every 500 reviews, so an interrupted run resumes where it stopped and
-  nothing is paid for twice.
+- Answers are saved every 500 reviews, so rerunning an interrupted run asks Jev only for the
+  reviews that are left.
 
 ## Layout
 
@@ -114,14 +119,17 @@ steps (drafting product areas, writing the summary) add a few minutes.
 | `requirements.txt` | Python dependencies, for setups without uv |
 | `tests/` | Tests with a fake model and made-up reviews; no API key or network needed |
 | `SECURITY.md` | How to report a security problem, and what the skill defends against |
+| `docs/` | The project website: one page, the intro video, and a sample report |
 | `LICENSE` | MIT |
 
 ## Security and privacy
 
 - **What leaves your machine.** Each review's title and text, plus the app's name, go to
-  TypeSafe's API for labeling. Star ratings, dates, and versions stay local. The fetcher
-  contacts only the store or page you link to, and the report's only outside request is
-  the Google Fonts stylesheet.
+  TypeSafe's API for labeling; star ratings, dates, and versions aren't sent to TypeSafe.
+  Claude also reads a sample of reviews and `brief.md` (counts, ratings, versions, and
+  quotes) while it works, so that text goes to Anthropic as part of your Claude Code
+  session. The fetcher contacts only the store or page you link to, and the report's only
+  outside request is the Google Fonts stylesheet.
 - **Your API key.** The TypeSafe SDK reads `TYPESAFE_API_KEY` from your environment. No
   script prints it or writes it to a file. Don't paste it into chat.
 - **Reviews are untrusted input.** Anyone can write a review, so the scripts treat review
@@ -130,7 +138,8 @@ steps (drafting product areas, writing the summary) add a few minutes.
   - the report's Content-Security-Policy lets only its own script run;
   - CSV cells that start like a spreadsheet formula (`=`, `+`, `-`, `@`) get a leading
     apostrophe, in both `review_labels.csv` and the report's Download CSV;
-  - Claude is told to read reviews as data and never follow instructions inside them.
+  - Claude is told to read reviews as data and never follow instructions inside them. This
+    lowers the risk from a malicious review but can't rule it out.
 - **Fetching.** Only public `http(s)` links are fetched: never `file://` or `ftp://`, and
   never local or private network addresses, including through a redirect. A response over
   25 MB or slower than 2 minutes is refused. For an export, only the file's name is
