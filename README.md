@@ -16,7 +16,8 @@ Jev usage. Treat these as estimates: cost depends on review length, the number o
 areas, and TypeSafe's current pricing. One run handles up to 10,000 reviews; see
 [How many reviews](#how-many-reviews).
 
-A one-page overview with a one-minute intro video is in [`docs/`](docs/index.html).
+**Website:** https://ying8109.github.io/app-review-triage/ has a one-minute intro video and a
+[sample report](https://ying8109.github.io/app-review-triage/sample-report.html) you can open in your browser.
 
 ## Output
 
@@ -122,7 +123,7 @@ only; Claude's own steps (drafting product areas, writing the summary) add a few
 | `requirements.txt` | Python dependencies, for setups without uv |
 | `tests/` | Tests with a fake model and made-up reviews; no API key or network needed |
 | `SECURITY.md` | How to report a security problem, and what the skill defends against |
-| `docs/` | The project website: one page, the intro video, and a sample report |
+| `docs/` | The project website (served by GitHub Pages): one page, the intro video, and a sample report |
 | `LICENSE` | MIT |
 
 ## Security and privacy
