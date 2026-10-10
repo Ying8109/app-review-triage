@@ -213,6 +213,7 @@ summary::-webkit-details-marker { display: none; }
 summary::after { content: "+"; font-family: var(--mono); font-size: 20px; font-weight: 500; color: var(--rust); transition: transform .2s ease; flex: none; }
 details[open] > summary::after { transform: rotate(45deg); }
 details > div { padding: 0 2px 20px; font-size: 15.5px; max-width: 72ch; }
+details.wide > div { max-width: none; padding-bottom: 24px; }
 .methods-box { margin-top: 36px; background: var(--warm); border: 1.5px solid var(--ink); border-radius: 10px; padding: 4px 20px; }
 .methods-box details { border: 0; }
 .methods-box summary { font-size: 18px; }
@@ -231,10 +232,17 @@ details > div { padding: 0 2px 20px; font-size: 15.5px; max-width: 72ch; }
 .tested b { color: var(--ink); }
 
 /* ---------- get started ---------- */
-.start { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 48px; align-items: start; }
-@media (max-width: 960px) { .start { grid-template-columns: minmax(0, 1fr); gap: 40px; } }
-.start h3 { font-size: 20px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; margin-bottom: 18px; }
-.start h3 .mono { color: var(--muted); font-weight: 400; }
+/* Three folded panels; the summary line says what's inside so a closed panel still informs. */
+.acc { display: grid; gap: 14px; }
+.acc details.acc-item { background: var(--paper); border: 1.5px solid var(--ink); border-radius: 10px; transition: box-shadow .2s ease; }
+.acc details.acc-item[open] { box-shadow: 8px 8px 0 var(--orange); }
+.acc summary { padding: 16px 18px; }
+.acc-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; min-width: 0; }
+.acc-n { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 6px; background: var(--ink); color: var(--on-navy); font-family: var(--mono); font-size: 14px; }
+.acc-t { font-size: 19px; font-weight: 800; letter-spacing: -.01em; }
+.acc-m { color: var(--muted); font-weight: 400; }
+.acc details > .acc-body { max-width: none; padding: 4px 18px 22px; }
+.acc-body > .note:first-child { margin: 0 0 16px; }
 .steps { list-style: none; padding: 0; margin: 0; display: grid; gap: 22px; counter-reset: s; }
 .steps > li { counter-increment: s; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; }
 .steps > li::before { content: counter(s); width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; background: var(--ink); color: var(--on-navy); font-family: var(--mono); font-weight: 600; font-size: 14px; }
@@ -255,7 +263,7 @@ details > div { padding: 0 2px 20px; font-size: 15.5px; max-width: 72ch; }
 .checkins li.gate::before { background: var(--orange); }
 .checkins h4 { font-size: 17px; }
 .checkins p { font-size: 15.5px; margin-top: 2px; }
-.table-wrap { margin-top: 30px; overflow-x: auto; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 8px; }
+.table-wrap { margin-top: 0; overflow-x: auto; background: var(--paper); border: 1.5px solid var(--ink); border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; font-size: 15px; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 9px 14px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { font-family: var(--mono); font-size: 11.5px; font-weight: 500; letter-spacing: .04em; text-transform: uppercase; color: var(--muted); background: var(--sand); }
@@ -264,14 +272,24 @@ tr:last-child td { border-bottom: 0; }
 tr.def td { background: var(--warm); font-weight: 700; }
 @media (max-width: 560px) { table { font-size: 14px; } th, td { padding: 8px 9px; white-space: normal; } }
 
-/* ---------- privacy ---------- */
-.trust { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; }
-@media (max-width: 960px) { .trust { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 24px; } }
-@media (max-width: 600px) { .trust { grid-template-columns: minmax(0, 1fr); } }
-.trust > div { padding-right: 22px; min-width: 0; }
-@media (min-width: 961px) { .trust > div + div { padding-left: 22px; border-left: 1px solid var(--line); } }
-.trust h3 { font-size: 16.5px; }
-.trust p { margin-top: 6px; font-size: 15px; }
+/* ---------- privacy (an FAQ item): what goes where, as short checklists ---------- */
+.flows { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .flows { grid-template-columns: minmax(0, 1fr); } }
+.flow { background: var(--page); border: 1.5px solid var(--ink); border-radius: 10px; padding: 16px 18px 18px; min-width: 0; }
+.flow-k { color: var(--rust); font-weight: 600; }
+.flow h3 { margin-top: 2px; font-size: 19px; letter-spacing: -.01em; }
+.flow ul { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.flow li { font-size: 14px; padding: 3px 10px; border-radius: 999px; background: var(--paper); border: 1px solid var(--line); color: var(--ink); }
+.flow li::before { content: "✓ "; color: var(--rust); font-weight: 700; }
+.flow ul.no li { background: transparent; border-style: dashed; color: var(--muted); }
+.flow ul.no li::before { content: "✗ "; color: var(--muted); }
+.flow .sub { margin-top: 12px; font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.flow .sub + ul { margin-top: 6px; }
+.cautions { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 900px) { .cautions { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 560px) { .flows { gap: 12px; } .flow { padding: 13px 14px 14px; } .flow h3 { font-size: 17px; } .flow ul { margin-top: 9px; gap: 5px; } .flow li { font-size: 13px; padding: 2px 9px; } .flow .sub { margin-top: 9px; } }
+.cautions p { padding-left: 14px; border-left: 3px solid var(--orange); font-size: 14.5px; }
+.cautions b { color: var(--ink); }
 
 /* ---------- feedback ---------- */
 .fb { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 40px; align-items: start; background: var(--warm); border: 1.5px solid var(--ink); border-radius: 10px; padding: clamp(20px, 3.5vw, 32px); box-shadow: 8px 8px 0 var(--orange-soft); }
@@ -311,7 +329,6 @@ footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
       <a href="#get">What you get</a>
       <a href="#how">How it works</a>
       <a href="#start">Get started</a>
-      <a href="#privacy">Privacy</a>
       <a href="#faq">FAQ</a>
       <a href="#feedback">Feedback</a>
     </nav>
@@ -464,61 +481,55 @@ footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
       <div class="sec-head">
         <span class="num mono">03 / Get started</span>
         <h2 id="start-title">Set it up once, then paste a link</h2>
-        <p class="lede">You need <a href="https://docs.claude.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Claude Code</a> and a <a href="https://console.typesafe.ai/keys" target="_blank" rel="noopener">TypeSafe API key</a> (TypeSafe bills per use). You won't write code. Paste each command into a terminal and press Return.</p>
+        <p class="lede">You need <a href="https://docs.claude.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Claude Code</a> and a <a href="https://console.typesafe.ai/keys" target="_blank" rel="noopener">TypeSafe API key</a> (TypeSafe bills per use). You won't write code.</p>
       </div>
-      <div class="start">
-        <div>
-          <h3>Set up once <span class="mono">~5 min</span></h3>
-          <ol class="steps">
-            <li><div><h4>Clone the skill into your skills folder</h4>
-              <div class="cmd"><pre id="c1">git clone https://github.com/Ying8109/app-review-triage.git ~/.claude/skills/app-review-triage</pre><button class="copy" type="button" data-copy="c1">Copy</button></div>
-              <p class="note">If your Mac asks to install developer tools, say yes. For one project only, clone into that project's <code>.claude/skills/</code> instead.</p></div></li>
-            <li><div><h4>Install uv</h4>
-              <div class="cmd"><pre id="c2">curl -LsSf https://astral.sh/uv/install.sh | sh</pre><button class="copy" type="button" data-copy="c2">Copy</button></div>
-              <p class="note">Or <code>brew install uv</code>. On Windows or without uv, see the <a href="https://github.com/Ying8109/app-review-triage#install" target="_blank" rel="noopener">README</a>.</p></div></li>
-            <li><div><h4>Add your TypeSafe key to <code>~/.zshrc</code> or <code>~/.bashrc</code></h4>
-              <div class="cmd"><pre id="c3">export TYPESAFE_API_KEY="<span class="ph">your-key-here</span>"</pre><button class="copy" type="button" data-copy="c3">Copy</button></div>
-              <p class="note">On Windows: <code>setx TYPESAFE_API_KEY "your-key-here"</code>. Never paste the key into a chat.</p></div></li>
-            <li><div><h4>Start a new Claude Code session</h4><p>From a new terminal, or a new session in the desktop app. Claude Code finds the skill on its own.</p></div></li>
-          </ol>
-        </div>
-        <div>
-          <h3>Each run <span class="mono">Claude checks in three times</span></h3>
-          <ol class="checkins">
-            <li><h4>Paste a review link</h4><p>Ask in your own words, or type <code>/app-review-triage</code>.</p></li>
-            <li class="gate"><h4>Answer four questions</h4><p>Is your key set (never the key itself), which product and link, what to categorize, and how many reviews. Claude repeats your answers back.</p></li>
-            <li class="gate"><h4>Approve the run plan</h4><p>Dates, product areas, what goes to TypeSafe and Anthropic, and the estimated time and cost. Nothing goes to Jev until you say "run it".</p></li>
-            <li class="gate"><h4>Open the report</h4><p>Claude opens it in your browser and recaps what you asked for against what was analyzed.</p></li>
-          </ol>
-          <div class="table-wrap">
-            <table>
-              <thead><tr><th>Reviews</th><th>Model time</th><th>Jev cost</th><th>Report</th></tr></thead>
-              <tbody>
-                <tr class="def"><td>300 (default)</td><td>~6 s</td><td>~$0.10</td><td>~0.5 MB</td></tr>
-                <tr><td>1,000</td><td>~20 s</td><td>~$0.30</td><td>~1.2 MB</td></tr>
-                <tr><td>5,000</td><td>~1.5 min</td><td>~$1.50</td><td>~5 MB</td></tr>
-                <tr><td>10,000 (max)</td><td>~3 min</td><td>~$3</td><td>~10 MB</td></tr>
-              </tbody>
-            </table>
+      <div class="acc">
+        <details class="acc-item" id="acc-setup">
+          <summary><span class="acc-h"><b class="acc-n">1</b><span class="acc-t">Set up once</span><span class="acc-m mono">4 steps · about 5 min</span></span></summary>
+          <div class="acc-body">
+            <p class="note">Paste each command into a terminal and press Return.</p>
+            <ol class="steps">
+              <li><div><h4>Clone the skill into your skills folder</h4>
+                <div class="cmd"><pre id="c1">git clone https://github.com/Ying8109/app-review-triage.git ~/.claude/skills/app-review-triage</pre><button class="copy" type="button" data-copy="c1">Copy</button></div>
+                <p class="note">If your Mac asks to install developer tools, say yes. For one project only, clone into that project's <code>.claude/skills/</code> instead.</p></div></li>
+              <li><div><h4>Install uv</h4>
+                <div class="cmd"><pre id="c2">curl -LsSf https://astral.sh/uv/install.sh | sh</pre><button class="copy" type="button" data-copy="c2">Copy</button></div>
+                <p class="note">Or <code>brew install uv</code>. On Windows or without uv, see the <a href="https://github.com/Ying8109/app-review-triage#install" target="_blank" rel="noopener">README</a>.</p></div></li>
+              <li><div><h4>Add your TypeSafe key to <code>~/.zshrc</code> or <code>~/.bashrc</code></h4>
+                <div class="cmd"><pre id="c3">export TYPESAFE_API_KEY="<span class="ph">your-key-here</span>"</pre><button class="copy" type="button" data-copy="c3">Copy</button></div>
+                <p class="note">On Windows: <code>setx TYPESAFE_API_KEY "your-key-here"</code>. Never paste the key into a chat.</p></div></li>
+              <li><div><h4>Start a new Claude Code session</h4><p>From a new terminal, or a new session in the desktop app. Claude Code finds the skill on its own.</p></div></li>
+            </ol>
           </div>
-          <p class="note">Estimates from test runs with <code>jev-1.13.0</code> and about 18 areas; yours vary with review length and TypeSafe's pricing. Apple's public feed stops at 500 reviews, so use an App Store Connect export for more. Interrupted runs resume where they stopped.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- Privacy -->
-  <section class="sec sec-white" id="privacy" aria-labelledby="privacy-title">
-    <div class="wrap">
-      <div class="sec-head">
-        <span class="num mono">04 / Privacy</span>
-        <h2 id="privacy-title">What leaves your machine</h2>
-      </div>
-      <div class="trust">
-        <div><h3>To TypeSafe and Anthropic</h3><p>Each review's title and text, plus the app's name, go to TypeSafe for labeling; ratings, dates, and versions don't. Claude reads a sample of reviews and a summary, so that text reaches Anthropic.</p></div>
-        <div><h3>Your API key</h3><p>Read from your environment. No script prints it or writes it to a file, and the skill tells Claude never to ask for it.</p></div>
-        <div><h3>Reviews are untrusted</h3><p>Every field is escaped, the report runs only its own script, and CSV cells that start like a spreadsheet formula get a leading apostrophe. Claude is told not to follow instructions inside reviews, which lowers the risk but can't rule it out.</p></div>
-        <div><h3>Before you share a report</h3><p>It contains every analyzed review in full, which may include an email address or order number. Private exports go to TypeSafe and into the report too.</p></div>
+        </details>
+        <details class="acc-item">
+          <summary><span class="acc-h"><b class="acc-n">2</b><span class="acc-t">Each run</span><span class="acc-m mono">Claude checks in 3 times</span></span></summary>
+          <div class="acc-body">
+            <ol class="checkins">
+              <li><h4>Paste a review link</h4><p>Ask in your own words, or type <code>/app-review-triage</code>.</p></li>
+              <li class="gate"><h4>Answer four questions</h4><p>Is your key set (never the key itself), which product and link, what to categorize, and how many reviews. Claude repeats your answers back.</p></li>
+              <li class="gate"><h4>Approve the run plan</h4><p>Dates, product areas, what goes to TypeSafe and Anthropic, and the estimated time and cost. Nothing goes to Jev until you say "run it".</p></li>
+              <li class="gate"><h4>Open the report</h4><p>Claude opens it in your browser and recaps what you asked for against what was analyzed.</p></li>
+            </ol>
+          </div>
+        </details>
+        <details class="acc-item">
+          <summary><span class="acc-h"><b class="acc-n">3</b><span class="acc-t">Time and cost</span><span class="acc-m mono">300 reviews ≈ 6 s, $0.10</span></span></summary>
+          <div class="acc-body">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Reviews</th><th>Model time</th><th>Jev cost</th><th>Report</th></tr></thead>
+                <tbody>
+                  <tr class="def"><td>300 (default)</td><td>~6 s</td><td>~$0.10</td><td>~0.5 MB</td></tr>
+                  <tr><td>1,000</td><td>~20 s</td><td>~$0.30</td><td>~1.2 MB</td></tr>
+                  <tr><td>5,000</td><td>~1.5 min</td><td>~$1.50</td><td>~5 MB</td></tr>
+                  <tr><td>10,000 (max)</td><td>~3 min</td><td>~$3</td><td>~10 MB</td></tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="note">Estimates from test runs with <code>jev-1.13.0</code> and about 18 areas; yours vary with review length and TypeSafe's pricing. Apple's public feed stops at 500 reviews, so use an App Store Connect export for more. Interrupted runs resume where they stopped.</p>
+          </div>
+        </details>
       </div>
     </div>
   </section>
@@ -527,9 +538,34 @@ footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
   <section class="sec sec-mist" id="faq" aria-labelledby="faq-title">
     <div class="wrap">
       <div class="sec-head">
-        <span class="num mono">05 / FAQ</span>
+        <span class="num mono">04 / FAQ</span>
         <h2 id="faq-title">Questions</h2>
       </div>
+      <details id="privacy" class="wide"><summary>What leaves my machine?</summary><div>
+        <div class="flows">
+          <div class="flow">
+            <p class="flow-k mono">Sent to</p>
+            <h3>TypeSafe, for Jev's labels</h3>
+            <ul><li>Review title</li><li>Review text</li><li>App name</li></ul>
+            <p class="sub">Not sent</p>
+            <ul class="no"><li>Star rating</li><li>Date</li><li>App version</li></ul>
+          </div>
+          <div class="flow">
+            <p class="flow-k mono">Sent to</p>
+            <h3>Anthropic, while Claude works</h3>
+            <ul><li>A sample of reviews</li><li>The summary: counts, ratings, quotes</li></ul>
+          </div>
+          <div class="flow">
+            <p class="flow-k mono">Your secret</p>
+            <h3>TypeSafe API key</h3>
+            <ul><li>Read from your environment</li><li>Never printed or saved to a file</li><li>Claude never asks for it</li></ul>
+          </div>
+        </div>
+        <div class="cautions">
+          <p><b>Reviews are treated as untrusted.</b> Fields are escaped, formula-like CSV cells get an apostrophe, and Claude is told to ignore instructions inside reviews. This lowers the risk but can't remove it.</p>
+          <p><b>Before you share a report,</b> remember it contains every analyzed review in full, which may include an email address or order number. Private exports end up in it too.</p>
+        </div>
+      </div></details>
       <details><summary>What does a run cost?</summary><div>In our tests, Jev cost roughly $0.06 to $0.10 per 300 reviews. Treat that as an estimate. Longer reviews and more product areas cost more, and TypeSafe sets its own prices. Claude's own steps count toward your usual Claude Code usage.</div></details>
       <details><summary>How accurate are the labels?</summary><div>Repeat runs agree closely, but no study yet compares the labels with human coders. Near 50/50 labels are left out of the counts and listed for a person to check, and each rank comes with a likely range. See <a href="#methods">How the numbers are made</a>.</div></details>
       <details><summary>Can I put these numbers in a readout?</summary><div>Yes, as a triage of what reviewers say. Quote the rank range with each rank, check the quotes you use against the review, and say the sample is public reviewers, not all users.</div></details>
@@ -543,7 +579,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
   <section class="sec sec-peach" id="feedback" aria-labelledby="feedback-title">
     <div class="wrap">
       <div class="sec-head">
-        <span class="num mono">06 / Feedback</span>
+        <span class="num mono">05 / Feedback</span>
         <h2 id="feedback-title">Tell me how it went</h2>
         <p class="lede">Email me what you used it for, what worked, and what confused you.</p>
       </div>
@@ -724,6 +760,11 @@ footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
   b.addEventListener("click", play);
   v.addEventListener("ended", function () { v.controls = false; b.setAttribute("aria-label", "Replay the intro video"); b.hidden = false; });
 })();
+
+// Links to #start open the "Set up once" panel.
+document.querySelectorAll('a[href="#start"]').forEach(function (a) {
+  a.addEventListener("click", function () { var d = document.getElementById("acc-setup"); if (d) d.open = true; });
+});
 
 // "How the numbers are made" links open the methods panel.
 document.querySelectorAll('a[href="#methods"]').forEach(function (a) {
