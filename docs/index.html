@@ -456,7 +456,7 @@ footer nav { display: flex; flex-wrap: wrap; gap: 18px; }
               <div><dt>Severity</dt><dd><b>Minor</b>: cosmetic, or a dislike of a design or business decision. <b>Degraded</b>: works poorly, or a feature is missing or removed. <b>Blocking</b>: the app or main task doesn't work, or the reviewer lost data or money.</dd></div>
               <div><dt>Priority</dt><dd>Each problem review adds 1 + severity (0–3) + 2 if the reviewer mentions leaving + 1 if they tie it to an update. Areas rank by that sum.</dd></div>
               <div><dt>Likely rank</dt><dd>Reviews are resampled 500 times with a fixed seed. "Likely #1–3" is the middle 90% of an area's ranks; overlapping ranges mean the order isn't settled.</dd></div>
-              <div><dt>Trends</dt><dd>Reviews are split at the median date. "Fewer" or "more lately" needs a one-sided Fisher exact p &lt; 0.025 and at least 6 complaints.</dd></div>
+              <div><dt>Trends</dt><dd>Reviews are split at the median date. "Fewer" or "more lately" needs a one-sided Fisher exact p &lt; 0.025, Holm-adjusted for the number of areas tested, and at least 6 complaints.</dd></div>
               <div><dt>Counts</dt><dd>One review can count toward several areas, so area counts add up to more than the number of problem reviews.</dd></div>
             </dl>
             <div class="tested">
