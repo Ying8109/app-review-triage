@@ -93,7 +93,20 @@ code, .mono { font-family: var(--mono); font-size: .88em; }
 .btn-ghost:hover { color: var(--on-navy); border-color: var(--on-navy); }
 .nav .btn { padding: 9px 14px; font-size: 14px; }
 .btn svg { width: 16px; height: 16px; flex: none; }
-@media (max-width: 860px) { .nav-links { display: none; } .nav .btn { margin-left: auto; } }
+/* Narrow screens: section links move to a second, swipeable row instead of disappearing. */
+@media (max-width: 1080px) {
+  html { scroll-padding-top: 112px; }
+  .nav .wrap { flex-wrap: wrap; column-gap: 16px; }
+  .nav .btn { margin-left: auto; }
+  .nav-links {
+    order: 3; flex: 0 0 calc(100% + 40px); margin: 0 -20px; padding: 2px 20px 12px;
+    overflow-x: auto; scrollbar-width: none; font-size: 14px; gap: 18px;
+    -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent); mask-image: linear-gradient(90deg, #000 85%, transparent);
+  }
+  .nav-links::-webkit-scrollbar { display: none; }
+  .nav-links a:last-child { padding-right: 32px; }
+}
+.nav-links a[aria-current="true"] { color: var(--rust); }
 
 /* ---------- hero ---------- */
 main { display: grid; gap: 28px; padding-block: 28px 56px; }
@@ -130,10 +143,13 @@ main { display: grid; gap: 28px; padding-block: 28px 56px; }
 .hero-video { margin: 0; min-width: 0; }
 .vframe { position: relative; aspect-ratio: 16 / 9; max-width: 100%; border-radius: 16px; overflow: hidden; background: var(--navy-b); border: 1px solid rgba(255, 255, 255, .16); box-shadow: 0 24px 60px rgba(4, 10, 24, .45); }
 .vframe video { display: block; width: 100%; height: 100%; object-fit: cover; }
-.vplay { position: absolute; left: 14px; bottom: 14px; display: inline-flex; align-items: center; gap: 10px; padding: 7px 18px 7px 7px; border: 0; border-radius: 999px; background: var(--card); color: var(--ink); font: inherit; font-size: 15px; font-weight: 700; white-space: nowrap; cursor: pointer; box-shadow: 0 10px 28px rgba(4, 10, 24, .35); transition: transform .15s ease; }
-.vplay:hover { transform: translateY(-2px); }
-.vplay-icon { width: 34px; height: 34px; border-radius: 50%; background: var(--orange); display: grid; place-items: center; }
-.vplay-icon svg { width: 13px; height: 13px; margin-left: 2px; fill: var(--ink); }
+/* The whole poster is the play target; the icon sits in the poster's empty bottom-right corner so it never covers the title. */
+.vplay { position: absolute; inset: 0; padding: 0; border: 0; border-radius: inherit; background: transparent; cursor: pointer; }
+.vplay:focus-visible { outline-offset: -4px; }
+.vplay-icon { position: absolute; right: 14px; bottom: 14px; width: 52px; height: 52px; border-radius: 50%; background: var(--orange); display: grid; place-items: center; box-shadow: 0 0 0 6px rgba(240, 139, 73, .25), 0 10px 28px rgba(4, 10, 24, .4); transition: transform .15s ease; }
+.vplay:hover .vplay-icon { transform: scale(1.08); }
+.vplay-icon svg { width: 18px; height: 18px; margin-left: 3px; fill: var(--ink); }
+@media (max-width: 640px) { .vplay-icon { right: 10px; bottom: 10px; width: 40px; height: 40px; } .vplay-icon svg { width: 14px; height: 14px; } }
 .hero-video figcaption { margin-top: 10px; font-size: 13px; color: var(--on-navy-kicker); }
 @media (max-width: 760px) { .hero-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .hero-curves { display: none; } .hero-stats b { font-size: 19px; } }
@@ -256,10 +272,11 @@ main { display: grid; gap: 28px; padding-block: 28px 56px; }
 .steps h4 { margin: 3px 0 4px; color: var(--ink); font-size: 17px; }
 .steps p { font-size: 15.5px; }
 .steps p + p { margin-top: 6px; }
-.cmd { margin-top: 10px; display: flex; align-items: center; gap: 8px; padding-right: 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 10px; min-width: 0; }
-.cmd pre { flex: 1; min-width: 0; margin: 0; padding: 14px 4px 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13.5px; line-height: 1.55; }
+.cmd { margin-top: 10px; display: flex; align-items: flex-start; gap: 8px; padding-right: 8px; background: var(--code-bg); color: var(--code-fg); border-radius: 10px; min-width: 0; }
+.cmd pre { flex: 1; min-width: 0; margin: 0; padding: 14px 4px 14px 16px; white-space: pre-wrap; overflow-wrap: anywhere; font-family: var(--mono); font-size: 13.5px; line-height: 1.55; }
+.cmd .ph { color: var(--gold); font-style: italic; }
 .cmd pre::before { content: "$ "; color: var(--orange); }
-.copy { flex: none; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--code-fg); background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .2); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+.copy { flex: none; margin-top: 10px; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--code-fg); background: rgba(255, 255, 255, .1); border: 1px solid rgba(255, 255, 255, .2); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
 .copy:hover { background: rgba(255, 255, 255, .18); }
 .copy.done { background: var(--orange); color: var(--ink); border-color: var(--orange); }
 .note { margin-top: 10px; font-size: 14px; color: var(--muted); }
@@ -274,7 +291,7 @@ main { display: grid; gap: 28px; padding-block: 28px 56px; }
 
 /* ---------- capacity ---------- */
 .cap { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 36px; align-items: start; }
-@media (max-width: 900px) { .cap { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1100px) { .cap { grid-template-columns: minmax(0, 1fr); } }
 .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; }
 table { width: 100%; border-collapse: collapse; font-size: 15.5px; font-variant-numeric: tabular-nums; }
 th, td { text-align: left; padding: 12px 16px; border-bottom: 1px solid var(--divider); white-space: nowrap; }
@@ -282,6 +299,7 @@ th { font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: u
 td { color: var(--ink); }
 tr:last-child td { border-bottom: 0; }
 tr.def td { background: var(--card-warm); font-weight: 700; }
+@media (max-width: 600px) { table { font-size: 14px; } th, td { white-space: normal; padding: 10px 8px; } th { font-size: 11px; letter-spacing: .04em; } th:first-child, td:first-child { padding-left: 12px; } }
 .limits { list-style: none; padding: 0; margin: 0; display: grid; gap: 14px; font-size: 15.5px; }
 .limits b { color: var(--ink); }
 
@@ -300,6 +318,22 @@ tr.def td { background: var(--card-warm); font-weight: 700; }
 .faq div { min-width: 0; }
 .faq dt { color: var(--ink); font-weight: 700; font-size: 17px; }
 .faq dd { margin: 6px 0 0; font-size: 15.5px; }
+
+/* ---------- methods ---------- */
+.methods { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 0; }
+@media (max-width: 960px) { .methods { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 600px) { .methods { grid-template-columns: minmax(0, 1fr); } }
+.methods > div { border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; min-width: 0; }
+.methods dt { color: var(--ink); font-weight: 700; font-size: 17px; }
+.methods dd { margin: 6px 0 0; font-size: 15px; }
+.methods dd b { color: var(--ink); }
+.tested { margin-top: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 760px) { .tested { grid-template-columns: minmax(0, 1fr); } }
+.tested > div { border-radius: 12px; padding: 18px 20px; min-width: 0; background: var(--sand); border: 1px solid var(--line); }
+.tested > div.gap { background: var(--card-warm); border-color: rgba(240, 139, 73, .45); }
+.tested h3 { font-size: 17px; }
+.tested ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 6px; font-size: 15px; }
+.tested b { color: var(--ink); }
 
 /* ---------- closing ---------- */
 .closing { text-align: left; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 20px; background: var(--card-warm); border-color: rgba(240, 139, 73, .35); }
@@ -332,6 +366,7 @@ footer a { color: var(--body); }
       <a href="#get">What you get</a>
       <a href="#uses">Use cases</a>
       <a href="#how">How it works</a>
+      <a href="#methods">Methods</a>
       <a href="#start">Get started</a>
       <a href="#capacity">How many reviews</a>
       <a href="#privacy">Privacy</a>
@@ -370,9 +405,9 @@ footer a { color: var(--body); }
           <video id="intro" width="1920" height="1080" poster="assets/intro-poster.jpg" preload="none" playsinline aria-label="One-minute intro with music: any review source, product areas that fit your app, every review labeled by Jev, a ranked list with real quotes, what it costs, and how to get started.">
             <source src="assets/intro.mp4" type="video/mp4">
           </video>
-          <button class="vplay" id="vplay" type="button"><span class="vplay-icon"><svg viewBox="0 0 12 14" aria-hidden="true"><path d="M0 0l12 7-12 7z"/></svg></span><span id="vplay-label">Watch the intro · 1:00</span></button>
+          <button class="vplay" id="vplay" type="button" aria-label="Play the one-minute intro video"><span class="vplay-icon"><svg viewBox="0 0 12 14" aria-hidden="true"><path d="M0 0l12 7-12 7z"/></svg></span></button>
         </div>
-        <figcaption>1 minute, with original music. Sample numbers come from the Todoist run.</figcaption>
+        <figcaption>Watch the 1-minute intro (with sound). Sample numbers come from the Todoist run.</figcaption>
       </figure>
     </div>
     <div class="hero-stats">
@@ -408,7 +443,7 @@ footer a { color: var(--body); }
       </div>
     </div>
     <div class="demo-foot">
-      <p>Real quotes and counts from the sample run: 300 Google Play reviews of Todoist, 2 Jun to 4 Oct 2026. Jev labels each review; code does the counting and ranking.</p>
+      <p>Real quotes and counts from the sample run: 300 Google Play reviews of Todoist, 2 Jun to 4 Oct 2026. Jev labels each review; code does the counting and ranking. Severity tags: <b>minor</b> is an annoyance, <b>degraded</b> means something works poorly, <b>blocking</b> means it doesn't work at all or the reviewer lost data or money. <a href="#methods">How the numbers are made</a></p>
       <button class="pause" id="pause" type="button" aria-pressed="false">Pause</button>
     </div>
   </section>
@@ -468,9 +503,9 @@ footer a { color: var(--body); }
     </div>
     <div class="uses">
       <article class="use"><span class="who">Product managers</span><h3>Check a release after it ships</h3><p>See which complaints reviewers tie to an update, and whether complaints about an area went up.</p><span class="hint">Ask for reviews "since September 1".</span></article>
-      <article class="use"><span class="who">UX researchers</span><h3>Voice of the customer, with evidence</h3><p>Areas named the way your team names them, and verbatim quotes to check and use in a readout.</p><span class="hint">Name your features and Claude uses them as areas.</span></article>
+      <article class="use"><span class="who">UX researchers</span><h3>Voice of the customer, with evidence</h3><p>Areas named the way your team names them, and verbatim quotes to check and use in a readout.</p><span class="hint">Name your features, or give Claude one research question to shape the areas around.</span></article>
       <article class="use"><span class="who">Strategy</span><h3>Tear down a competitor</h3><p>Run it on a rival's page to see what their reviewers complain about and what they praise.</p><span class="hint">Any public App Store, Google Play, or Steam link.</span></article>
-      <article class="use"><span class="who">Game teams</span><h3>Read the reaction to a patch</h3><p>Steam thumbs up and down become 5★ and 1★, and a run handles up to 10,000 reviews.</p><span class="hint">In our test, fetching 10,000 Steam reviews took about a minute.</span></article>
+      <article class="use"><span class="who">Game teams</span><h3>Read the reaction to a patch</h3><p>Steam's thumbs up and down are reported as % recommended, next to the game's all-time share, and a run handles up to 10,000 reviews.</p><span class="hint">In our test, fetching 10,000 Steam reviews took about a minute.</span></article>
       <article class="use"><span class="who">Support and CX</span><h3>Sort tickets and survey answers</h3><p>Load a CSV or JSON export from a CRM, Play Console, or App Store Connect.</p><span class="hint">Their text goes to TypeSafe. Check you're allowed first.</span></article>
       <article class="use"><span class="who">Roadmap planning</span><h3>Know what not to break</h3><p>Praise is counted per area too, so the team can see which features reviewers praise.</p><span class="hint">Todoist sample: design and ease of use, 24 praise reviews.</span></article>
     </div>
@@ -499,12 +534,45 @@ footer a { color: var(--body); }
     </ol>
   </section>
 
+  <!-- Methods -->
+  <section class="card" id="methods" aria-labelledby="methods-title">
+    <div class="sec-head">
+      <div class="eyebrow">For researchers</div>
+      <h2 class="sec-title" id="methods-title">How the numbers are made</h2>
+      <p class="sec-lede">The rules behind every count and rank, so you can explain them in a readout. Every Jev question, threshold, and weight is in one file, <a href="https://github.com/Ying8109/app-review-triage/blob/main/scripts/jev_questions.py" target="_blank" rel="noopener"><code>jev_questions.py</code></a>, where you can check or change them.</p>
+    </div>
+    <dl class="methods">
+      <div><dt>When a label counts</dt><dd>Jev gives a probability for each question. A label counts at 60% or higher. Between 40% and 60% it's left out of the counts and listed as borderline for a person to check. Off-topic needs 75%, because it removes a review from every count.</dd></div>
+      <div><dt>Severity</dt><dd><b>Minor</b>: cosmetic, or a dislike of a design or business decision. <b>Degraded</b>: something works poorly, or a feature is missing or was removed. <b>Blocking</b>: the app or the reviewer's main task doesn't work at all, or they lost data or money.</dd></div>
+      <div><dt>Priority</dt><dd>Each problem review in an area adds 1 + severity (0–3) + 2 if the reviewer mentions leaving + 1 if they tie it to an update. Areas are ranked by that sum, so a few blocking reviews can outrank many minor ones.</dd></div>
+      <div><dt>Likely rank</dt><dd>The reviews are resampled 500 times with a fixed seed, so reruns match. "Likely #1–3" is the middle 90% of the ranks an area gets. When two ranges overlap, their order isn't settled.</dd></div>
+      <div><dt>Trends</dt><dd>Reviews are split at the median date. An area is marked "fewer" or "more lately" only when a one-sided Fisher exact test gives p &lt; 0.025, with at least 6 complaints. Monthly counts are shown either way.</dd></div>
+      <div><dt>Counts and shares</dt><dd>One review can count toward several areas, so area counts add up to more than the number of reviews that report a problem.</dd></div>
+    </dl>
+    <div class="tested">
+      <div>
+        <h3>What we've tested</h3>
+        <ul>
+          <li><b>Repeatability.</b> We reran Jev 5 times on the same 300 reviews for each of 3 apps. Between 0.2% and 0.4% of label decisions changed, and the top 3 areas held (one app swapped #2 and #3).</li>
+          <li><b>Sampling noise.</b> With 300 reviews, only the top 2 to 4 areas were reliably ordered. At 10,000, the top 4 rank ranges were one or two places wide.</li>
+        </ul>
+      </div>
+      <div class="gap">
+        <h3>What we haven't tested</h3>
+        <ul>
+          <li><b>Agreement with human coders.</b> No study yet compares Jev's labels with a researcher's codes. Spot-check the quotes and borderline reviews before you cite a number.</li>
+          <li><b>Who writes reviews.</b> Reviewers choose themselves and lean toward strong feelings. The report describes these reviewers, not your whole user base.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
   <!-- Get started -->
   <section class="card" id="start" aria-labelledby="start-title">
     <div class="sec-head">
       <div class="eyebrow">Get started</div>
       <h2 class="sec-title" id="start-title">Set it up once, then just paste a link</h2>
-      <p class="sec-lede">You need <a href="https://docs.claude.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Claude Code</a> and a <a href="https://console.typesafe.ai/keys" target="_blank" rel="noopener">TypeSafe API key</a>. You don't write code; setup is a few terminal commands.</p>
+      <p class="sec-lede">You need <a href="https://docs.claude.com/en/docs/claude-code/overview" target="_blank" rel="noopener">Claude Code</a> and a <a href="https://console.typesafe.ai/keys" target="_blank" rel="noopener">TypeSafe API key</a> (TypeSafe bills per use; see <a href="#capacity">how many reviews</a> for estimates). You don't write code. Setup is four steps: paste each command into a terminal (on a Mac, the Terminal app) and press Return.</p>
     </div>
     <div class="start">
       <div>
@@ -512,31 +580,33 @@ footer a { color: var(--body); }
         <ol class="steps">
           <li><div><h4>Clone the skill into your skills folder</h4>
             <div class="cmd"><pre id="c1">git clone https://github.com/Ying8109/app-review-triage.git ~/.claude/skills/app-review-triage</pre><button class="copy" type="button" data-copy="c1">Copy</button></div>
-            <p class="note">For one project only, clone it into that project's <code>.claude/skills/app-review-triage</code> instead.</p></div></li>
+            <p class="note">If your Mac asks to install developer tools, say yes; that installs git. For one project only, clone into that project's <code>.claude/skills/app-review-triage</code> instead.</p></div></li>
           <li><div><h4>Install uv</h4><p>uv runs the scripts and installs their Python dependencies on first use.</p>
             <div class="cmd"><pre id="c2">curl -LsSf https://astral.sh/uv/install.sh | sh</pre><button class="copy" type="button" data-copy="c2">Copy</button></div>
-            <p class="note">Or <code>brew install uv</code>. Without uv, Python 3.10+ and a virtual environment work too; the README has the steps.</p></div></li>
+            <p class="note">Or <code>brew install uv</code>. On Windows, or without uv, see the <a href="https://github.com/Ying8109/app-review-triage#install" target="_blank" rel="noopener">README's install steps</a>.</p></div></li>
           <li><div><h4>Add your TypeSafe API key to your shell profile</h4><p>Create a key at <a href="https://console.typesafe.ai/keys" target="_blank" rel="noopener">console.typesafe.ai/keys</a>, then add this line to <code>~/.zshrc</code> or <code>~/.bashrc</code>:</p>
-            <div class="cmd"><pre id="c3">export TYPESAFE_API_KEY="your-key-here"</pre><button class="copy" type="button" data-copy="c3">Copy</button></div>
-            <p class="note">Never paste the key into a chat or commit it to a repository.</p></div></li>
-          <li><div><h4>Start a new Claude Code session</h4><p>Open a new terminal so it sees the key, and start Claude Code. The skill is picked up automatically.</p></div></li>
+            <div class="cmd"><pre id="c3">export TYPESAFE_API_KEY="<span class="ph">your-key-here</span>"</pre><button class="copy" type="button" data-copy="c3">Copy</button></div>
+            <p class="note">Replace <code>your-key-here</code> with your key. On Windows, run <code>setx TYPESAFE_API_KEY "your-key-here"</code> instead. Never paste the key into a chat or commit it to a repository.</p></div></li>
+          <li><div><h4>Start a new Claude Code session</h4><p>Open a new terminal so it sees the key, and start Claude Code. In the Claude desktop app, start a new session. The skill is picked up automatically.</p></div></li>
         </ol>
       </div>
       <div>
         <h3>Each run <span>usually a few minutes for 300 reviews</span></h3>
         <ol class="steps">
           <li><div><h4>Paste a review link</h4><p>Ask in your own words, or type <code>/app-review-triage</code>.</p></div></li>
-          <li><div><h4>Answer three questions</h4><p>Is your key set, which product and link, and how many reviews. The skill tells Claude to wait for your answers before it fetches anything.</p></div></li>
-          <li><div><h4>Claude does the rest</h4><p>It fetches the reviews, shows you the product areas it drafted, has Jev label every review, and checks the results.</p></div></li>
-          <li><div><h4>Open the report</h4><p>Claude opens <code>report.html</code> in your browser. Want different areas? Ask. A rerun only re-asks the questions that changed.</p></div></li>
+          <li><div><h4>Answer four questions</h4><p>Whether your key is set (never the key itself), which product and link, what to categorize, and how many reviews. For categories, Claude can draft product areas from the reviews, use the areas your team tracks, or shape them around one research question. It repeats your answers back before fetching anything.</p></div></li>
+          <li><div><h4>Approve the run plan</h4><p>After fetching, Claude shows the reviews' date range, the product areas Jev will be asked about, what text goes to TypeSafe and Anthropic, and the estimated time and cost. Nothing goes to Jev until you say "run it".</p></div></li>
+          <li><div><h4>Open the report</h4><p>Claude opens <code>report.html</code> in your browser and recaps what you asked for against what was analyzed. Want different areas? Ask: a rerun asks Jev only about the areas you changed.</p></div></li>
         </ol>
         <p class="note">An example run, shortened:</p>
         <div class="chat" aria-label="Example conversation">
           <div class="msg you"><span class="from">You</span>Here's Todoist on Google Play: play.google.com/store/apps/details?id=com.todoist. What should the product team fix?</div>
-          <div class="msg claude"><span class="from">Claude</span>Before I start, three quick questions:
-            <ol><li>Is your TypeSafe API key set as <code>TYPESAFE_API_KEY</code>? Please don't paste the key here.</li><li>Todoist on Google Play, from that link?</li><li>How many reviews: 300 (default), 1,000, 5,000, or all since a date?</li></ol></div>
-          <div class="msg you"><span class="from">You</span>It's set. Yes, that link. 300 is fine.</div>
-          <div class="msg claude"><span class="from">Claude</span>Done: 300 reviews from 2 Jun to 4 Oct 2026, 18 product areas. Sign-up and login is the top problem: 23 reviews, 15 of them blocking. I've opened the report in your browser.<br><span class="file">report.html</span></div>
+          <div class="msg claude"><span class="from">Claude</span>Before I start, four quick questions:
+            <ol><li>Is your TypeSafe API key set as <code>TYPESAFE_API_KEY</code>? Please don't paste the key here.</li><li>Todoist on Google Play, from that link?</li><li>Should I draft product areas from the reviews, use areas you already track, or focus on one question?</li><li>How many reviews: 300 (default), 1,000, 5,000, or all since a date?</li></ol></div>
+          <div class="msg you"><span class="from">You</span>It's set. Yes, that link. Draft the areas. 300 is fine.</div>
+          <div class="msg claude"><span class="from">Claude</span>Run plan: 300 reviews, 2 Jun to 4 Oct 2026, newest first. Jev will ask about 18 product areas: Sign-up and login, Design, Pricing, and 15 more. Review text goes to TypeSafe for labeling. Estimated: about 6 s and $0.10. Run it, or change anything first?</div>
+          <div class="msg you"><span class="from">You</span>Run it.</div>
+          <div class="msg claude"><span class="from">Claude</span>Done: 300 reviews analyzed, as planned. Sign-up and login is the top problem: 23 reviews, 15 of them blocking. I've opened the report in your browser.<br><span class="file">report.html</span></div>
         </div>
       </div>
     </div>
@@ -593,7 +663,8 @@ footer a { color: var(--body); }
     <dl class="faq">
       <div><dt>Do I need to write code?</dt><dd>No. Claude runs the scripts. You run a few setup commands once to install the skill and uv and add your TypeSafe key.</dd></div>
       <div><dt>What does a run cost?</dt><dd>In our tests, Jev cost roughly $0.06 to $0.10 per 300 reviews. Treat that as an estimate: longer reviews and more product areas cost more, and TypeSafe sets its own prices. Claude's own steps count toward your usual Claude Code usage.</dd></div>
-      <div><dt>How accurate are the labels?</dt><dd>They're probabilistic. Near 50/50 labels are left out of the counts and listed for a person to check, and each rank comes with a likely range.</dd></div>
+      <div><dt>How accurate are the labels?</dt><dd>Repeat runs agree closely, but no study yet compares the labels with human coders. Near 50/50 labels are left out of the counts and listed for a person to check, and each rank comes with a likely range. See <a href="#methods">How the numbers are made</a>.</dd></div>
+      <div><dt>Can I put these numbers in a readout?</dt><dd>Yes, as a triage of what reviewers say. Quote the rank range with each rank, check the quotes you use against the review, and say the sample is public reviewers, not all users.</dd></div>
       <div><dt>Which languages work?</dt><dd>English works best. Other languages are labeled but flagged in the report.</dd></div>
       <div><dt>Can I use my own product areas?</dt><dd>Yes. Name your features or areas and the skill tells Claude to use them as you wrote them, adding only what's missing.</dd></div>
       <div><dt>What about review sites like Trustpilot?</dt><dd>Pages with structured review data often work directly. For others, Claude can try reading the page in a browser, but some sites block this or show only a few hundred reviews.</dd></div>
@@ -617,6 +688,8 @@ footer a { color: var(--body); }
     <p>Created by Ying Chen, UX Researcher &amp; writer of <a href="https://signalstosolutions.substack.com/" target="_blank" rel="noopener">Signals to Solutions newsletter</a>.</p>
     <nav aria-label="Footer">
       <a href="https://github.com/Ying8109/app-review-triage" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/Ying8109/app-review-triage#readme" target="_blank" rel="noopener">README</a>
+      <a href="https://github.com/Ying8109/app-review-triage/issues" target="_blank" rel="noopener">Report a problem</a>
       <a href="https://github.com/Ying8109/app-review-triage/blob/main/LICENSE" target="_blank" rel="noopener">MIT License</a>
       <a href="https://docs.typesafe.ai" target="_blank" rel="noopener">TypeSafe docs</a>
     </nav>
@@ -649,7 +722,7 @@ footer a { color: var(--body); }
     var li = document.createElement("li");
     li.className = "rv" + (labeled ? "" : " unlabeled");
     li.dataset.area = r.area;
-    var stars = '<span class="stars" aria-label="' + r.stars + ' star' + (r.stars > 1 ? "s" : "") + '">';
+    var stars = '<span class="stars" role="img" aria-label="' + r.stars + ' star' + (r.stars > 1 ? "s" : "") + '">';
     for (var i = 0; i < 5; i++) stars += i < r.stars ? "<i>★</i>" : "★";
     stars += "</span>";
     var meta = document.createElement("div");
@@ -756,11 +829,32 @@ footer a { color: var(--body); }
 
 // Intro video: poster first, play on click.
 (function () {
-  var v = document.getElementById("intro"), b = document.getElementById("vplay"), label = document.getElementById("vplay-label");
+  var v = document.getElementById("intro"), b = document.getElementById("vplay");
   if (!v || !b) return;
   function play() { b.hidden = true; v.controls = true; var p = v.play(); if (p && p.catch) p.catch(function () { b.hidden = false; }); }
   b.addEventListener("click", play);
-  v.addEventListener("ended", function () { v.controls = false; label.textContent = "Replay the intro"; b.hidden = false; });
+  v.addEventListener("ended", function () { v.controls = false; b.setAttribute("aria-label", "Replay the intro video"); b.hidden = false; });
+})();
+
+// Section nav: mark the section in view, and keep its link visible in the swipeable row.
+(function () {
+  var links = document.querySelectorAll(".nav-links a");
+  if (!("IntersectionObserver" in window) || !links.length) return;
+  var byId = {};
+  links.forEach(function (a) { byId[a.getAttribute("href").slice(1)] = a; });
+  var current = null;
+  var io = new IntersectionObserver(function (es) {
+    es.forEach(function (e) {
+      if (e.isIntersecting) current = e.target.id;
+      else if (current === e.target.id) current = null;
+    });
+    links.forEach(function (a) { a.removeAttribute("aria-current"); });
+    if (!current) return;
+    var a = byId[current], row = a.parentNode;
+    a.setAttribute("aria-current", "true");
+    if (row.scrollWidth > row.clientWidth) row.scrollTo({ left: a.offsetLeft - row.offsetLeft - 20, behavior: "smooth" });
+  }, { rootMargin: "-30% 0px -65% 0px" });
+  Object.keys(byId).forEach(function (id) { var el = document.getElementById(id); if (el) io.observe(el); });
 })();
 
 // Copy buttons
@@ -769,7 +863,7 @@ document.querySelectorAll(".copy").forEach(function (btn) {
     var pre = document.getElementById(btn.dataset.copy);
     var text = pre.textContent;
     function done() { btn.textContent = "Copied"; btn.classList.add("done"); setTimeout(function () { btn.textContent = "Copy"; btn.classList.remove("done"); }, 1600); }
-    function fallback() { var r = document.createRange(); r.selectNodeContents(pre); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = "Press ⌘C"; }
+    function fallback() { var r = document.createRange(); r.selectNodeContents(pre); var s = getSelection(); s.removeAllRanges(); s.addRange(r); btn.textContent = /Mac|iP(hone|ad)/.test(navigator.platform) ? "Press ⌘C" : "Press Ctrl+C"; setTimeout(function () { btn.textContent = "Copy"; }, 4000); }
     try { navigator.clipboard.writeText(text).then(done, fallback); } catch (e) { fallback(); }
   });
 });
