@@ -13,7 +13,9 @@ Supported sources:
 
 Exit codes: 2 means the URL is not supported; the caller should extract reviews
 another way and write them with --from-file. 3 means the source gave no reviews
-(nothing is written); the message says why and what to try instead.
+(nothing is written): the store returned none, the app wasn't found, the store
+couldn't be reached, or the export couldn't be read. The message says why and
+what to try instead.
 
 Usage:
   uv run fetch_reviews.py <url> [--max 300] [--country us] [--lang en] --out reviews.json
@@ -28,9 +30,11 @@ import html
 import io
 import ipaddress
 import json
+import math
 import re
 import socket
 import sys
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -51,6 +55,7 @@ class NoReviews(Exception):
 
 MAX_RESPONSE_BYTES = 25_000_000  # far above any store page or feed; stops a hostile or broken server from filling memory
 MAX_RESPONSE_SECONDS = 120  # the socket timeout is per read, so a server sending a byte at a time needs a deadline too
+MAX_CSV_FIELD = 10_000_000  # Python's csv module stops at 128 KB per cell by default; exports can hold long reviews
 
 
 def web_url(url: str) -> bool:
@@ -84,12 +89,41 @@ class _WebOnlyRedirects(urllib.request.HTTPRedirectHandler):
 _OPENER = urllib.request.build_opener(_WebOnlyRedirects)
 
 
+def _too_slow() -> UnsupportedSource:
+    return UnsupportedSource(f"the server took over {MAX_RESPONSE_SECONDS} s to answer; try again later or use an export with --from-file")
+
+
 def http_get(url: str, accept: str = "application/json") -> bytes:
+    """GET a public http(s) address. The whole request, from the lookup to the last byte, gets MAX_RESPONSE_SECONDS.
+
+    The socket timeout covers one read at a time, so a server that sends a byte now and then (in the headers
+    or the body) could otherwise keep the fetch open for hours. The request runs in a worker thread, and the
+    caller stops waiting for it at the deadline.
+    """
     if not web_url(url):
         raise UnsupportedSource(f"only http(s) links can be fetched, not {urllib.parse.urlparse(url).scheme or 'this'}: address")
     if not public_host(urllib.parse.urlparse(url).hostname):
         raise UnsupportedSource("links to local or private network addresses aren't fetched; save the reviews as an export and use --from-file")
     request = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": accept})
+    result: dict = {}
+
+    def work() -> None:
+        try:
+            result["body"] = _get_with_retries(request)
+        except BaseException as error:  # noqa: BLE001 - raised again below, in the caller's thread
+            result["error"] = error
+
+    worker = threading.Thread(target=work, daemon=True)  # a daemon, so an abandoned request can't keep the process alive
+    worker.start()
+    worker.join(MAX_RESPONSE_SECONDS)
+    if worker.is_alive():
+        raise _too_slow()
+    if "error" in result:
+        raise result["error"]
+    return result["body"]
+
+
+def _get_with_retries(request: urllib.request.Request) -> bytes:
     for attempt in range(4):
         try:
             with _OPENER.open(request, timeout=30) as response:
@@ -99,18 +133,20 @@ def http_get(url: str, accept: str = "application/json") -> bytes:
                 time.sleep(2**attempt)
                 continue
             raise
-    raise RuntimeError(f"unreachable: {url}")
+    raise RuntimeError(f"unreachable: {request.full_url}")
 
 
 def _read_capped(response) -> bytes:
     deadline, chunks, size = time.monotonic() + MAX_RESPONSE_SECONDS, [], 0
-    while chunk := response.read(min(65536, MAX_RESPONSE_BYTES + 1 - size)):
+    # read1 returns whatever has arrived; read(n) waits until it has all n bytes, so a slow body never reached the checks.
+    read = getattr(response, "read1", None) or response.read
+    while chunk := read(min(65536, MAX_RESPONSE_BYTES + 1 - size)):
         chunks.append(chunk)
         size += len(chunk)
         if size > MAX_RESPONSE_BYTES:
             raise UnsupportedSource(f"the response is larger than {MAX_RESPONSE_BYTES // 1_000_000} MB; save the reviews as an export and use --from-file")
         if time.monotonic() > deadline:
-            raise UnsupportedSource(f"the server took over {MAX_RESPONSE_SECONDS} s to answer; try again later or use an export with --from-file")
+            raise _too_slow()
     return b"".join(chunks)
 
 
@@ -118,9 +154,67 @@ def get_json(url: str) -> dict:
     return json.loads(http_get(url))
 
 
+def one_line(text: str) -> str:
+    """Plain one-line text. Control characters become spaces, bidirectional overrides are removed, and runs of
+    whitespace become one space.
+
+    Strangers write review text and app metadata. A newline could start a fake section in sample.txt or brief.md,
+    a terminal escape (ESC, BEL, OSC 52 clipboard writes) acts when the text is printed, NUL makes brief.md look
+    binary to grep, and a right-to-left override shows text in a different order than it's stored.
+    """
+    text = re.sub(r"[\u202a-\u202e\u2066-\u2069]", "", re.sub(r"[\x00-\x1f\x7f-\x9f]", " ", text))
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def clean(text) -> str:
     text = text if isinstance(text, str) else "" if text is None else str(text)  # JSON-LD and exports can hold numbers
-    return re.sub(r"\s+", " ", html.unescape(text)).strip()
+    return one_line(html.unescape(text))
+
+
+APP_TEXT_FIELDS = ("name", "category", "description", "current_version", "store", "sort", "country", "url", "rating_scale")
+APP_NUMBER_FIELDS = ("average_rating", "rating_count", "recommended_share")
+
+
+def _plain_number(value) -> int | float | None:
+    """A finite number (an export may write "4.5"); None for anything else."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def plain_app(app: dict) -> dict:
+    """The app block with only the fields the scripts use, each text field one line of plain text.
+
+    The name, description, and category come from the store page or an export, so strangers wrote them too,
+    and sample_reviews.py and triage.py print them. An export's app block can hold anything, so other keys go.
+    """
+    out = {}
+    for key in APP_TEXT_FIELDS:
+        if key in app:
+            # one_line, not clean: html.unescape would turn a link's "&not..." into "¬...", and app names are plain text.
+            out[key] = None if app[key] is None else one_line(str(app[key]))[:2000] or None
+    for key in APP_NUMBER_FIELDS:
+        if key in app:
+            out[key] = _plain_number(app[key])
+    out["name"] = out.get("name") or "the app"
+    return out
+
+
+def since_arg(value: str) -> str:
+    """argparse type for --since: a real YYYY-MM-DD date. Dates are compared as text, so 2026-9-1 would drop every review."""
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        try:
+            date.fromisoformat(value)
+            return value
+        except ValueError:
+            pass
+    raise argparse.ArgumentTypeError(f"use a YYYY-MM-DD date like 2026-09-01, not {value!r}")
 
 
 EARLIEST_YEAR = 2000  # older dates, and dates past next year, are typos or junk
@@ -319,6 +413,7 @@ def fetch_apple(url: str, max_reviews: int, country: str | None, since: str | No
 
 def fetch_google_play(url: str, max_reviews: int, country: str | None, lang: str | None, since: str | None = None) -> dict:
     from google_play_scraper import Sort, app as play_app, reviews as play_reviews
+    from google_play_scraper.exceptions import NotFoundError
 
     query = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
     package = (query.get("id") or [None])[0]
@@ -329,7 +424,13 @@ def fetch_google_play(url: str, max_reviews: int, country: str | None, lang: str
     if not re.fullmatch(r"[a-z]{2}", cc) or not re.fullmatch(r"[a-z]{2,3}(-[a-z0-9]{2,4})?", hl):
         raise UnsupportedSource(f"country and language must be codes like us and en, not {cc!r} and {hl!r}")
 
-    meta = play_app(package, lang=hl, country=cc)
+    try:
+        meta = play_app(package, lang=hl, country=cc)
+    except NotFoundError as error:
+        raise NoReviews(
+            f"Google Play has no app {package} for country {cc}. Check the id= in the link; an app that isn't "
+            "available in that country needs --country with one where it is."
+        ) from error
     app = {
         "name": meta.get("title") or package,
         "category": meta.get("genre"),
@@ -372,6 +473,12 @@ def fetch_google_play(url: str, max_reviews: int, country: str | None, lang: str
 
 
 # --------------------------------------------------------------------------- Steam
+
+# Steam reviews are written in BBCode. The tags are markup, not the reviewer's words; text like "[1]" or "[sic]" stays.
+STEAM_MARKUP = re.compile(
+    r"\[/?(?:h[1-6]|b|i|u|s|strike|spoiler|noparse|hr|code|quote|url|list|olist|\*|table|tr|td|th|img|previewyoutube)(?:=[^\]\n]{0,500})?\]",
+    re.IGNORECASE,
+)
 
 
 def fetch_steam(url: str, max_reviews: int, lang: str | None, since: str | None = None) -> dict:
@@ -418,7 +525,7 @@ def fetch_steam(url: str, max_reviews: int, lang: str | None, since: str | None 
                 # Steam has thumbs up/down instead of stars; map to 5 / 1 so code can still split by rating.
                 "rating": 5 if r.get("voted_up") else 1,
                 "title": "",
-                "text": clean(r.get("review")),
+                "text": clean(STEAM_MARKUP.sub(" ", str(r.get("review") or ""))),
                 "date": datetime.fromtimestamp(r["timestamp_created"], tz=timezone.utc).isoformat(),
                 "version": None,
                 "helpful_count": int(r.get("votes_up") or 0),
@@ -453,20 +560,43 @@ def _rating_or_none(value) -> int | None:
         return None
 
 
+_ASCII_LOWER = str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz")  # keeps every index, unlike str.lower()
+
+
+def _jsonld_blocks(page: str) -> tuple[list[str], str | None]:
+    """The text of each <script type="application/ld+json"> block, and the page <title>, in one forward pass.
+
+    A regex like <script ...>(.*?)</script> rescans the rest of the page for every opening tag that never closes,
+    so a hostile page full of them took minutes. Here each search starts where the last one ended.
+    """
+    lowered, blocks, at = page.translate(_ASCII_LOWER), [], 0
+    while (start := lowered.find("<script", at)) != -1:
+        tag_end = lowered.find(">", start)
+        close = lowered.find("</script", tag_end) if tag_end != -1 else -1
+        if close == -1:
+            break
+        if re.search(r"""type\s*=\s*["']?application/ld\+json""", lowered[start:tag_end]):
+            blocks.append(page[tag_end + 1 : close])
+        at = close + 1
+    title_start = lowered.find("<title>")
+    title_end = lowered.find("</title>", title_start) if title_start != -1 else -1
+    return blocks, page[title_start + 7 : title_end] if title_end != -1 else None
+
+
 def fetch_jsonld(url: str, max_reviews: int) -> dict:
     try:
         page = http_get(url, accept="text/html").decode("utf-8", "replace")
     except (urllib.error.URLError, TimeoutError) as error:
         raise UnsupportedSource(f"could not download the page directly ({error})") from error
-    blocks = re.findall(r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', page, re.S | re.I)
+    blocks, title = _jsonld_blocks(page)
     reviews: list[dict] = []
     name = None
     for block in blocks:
         try:
-            data = json.loads(block)
-        except json.JSONDecodeError:
+            nodes = list(_walk(json.loads(block)))
+        except (ValueError, RecursionError):  # not JSON, or nested too deeply to be structured data
             continue
-        for node in _walk(data):
+        for node in nodes:
             kind = node.get("@type")
             kinds = kind if isinstance(kind, list) else [kind]
             if name is None and any(k in ("SoftwareApplication", "MobileApplication", "Product", "Organization", "LocalBusiness") for k in kinds):
@@ -486,9 +616,8 @@ def fetch_jsonld(url: str, max_reviews: int) -> dict:
                 )
     if not reviews:
         raise UnsupportedSource("no schema.org Review objects found in the page's JSON-LD")
-    title = re.search(r"<title>(.*?)</title>", page, re.S | re.I)
     app = {
-        "name": name or (clean(title.group(1)) if title else urllib.parse.urlparse(url).netloc),
+        "name": name or clean(title) or urllib.parse.urlparse(url).netloc,
         "category": None,
         "description": "",
         "current_version": None,
@@ -534,6 +663,18 @@ def _count(value) -> int:
 
 
 def load_file(path: Path, app_name: str | None) -> dict:
+    try:
+        return _load_file(path, app_name)
+    except RecursionError as error:
+        raise NoReviews(f"{path.name} is nested too deeply to be a review export; nothing written.") from error
+    except (OSError, ValueError, csv.Error) as error:  # ValueError covers broken JSON and undecodable text
+        raise NoReviews(
+            f"{path.name} could not be read as a review export ({error}). Check that it's the CSV or JSON file the store "
+            "or tool exported; nothing written."
+        ) from error
+
+
+def _load_file(path: Path, app_name: str | None) -> dict:
     if path.suffix.lower() == ".csv":
         raw = path.read_bytes()
         # Play Console review exports are UTF-16; most other tools write UTF-8, often with a BOM.
@@ -543,11 +684,14 @@ def load_file(path: Path, app_name: str | None) -> dict:
         except UnicodeDecodeError:
             text = raw.decode("cp1252", errors="replace")  # Excel on Windows saves "CSV" in the ANSI code page
         try:
-            # Excel in many European locales separates columns with semicolons.
-            dialect = csv.Sniffer().sniff(text[:20000], delimiters=",;\t")
+            # Excel in many European locales separates columns with semicolons. Only the delimiter is taken from the
+            # sniffer: it also guesses quoting from the sample, and when the first 20,000 characters had no doubled
+            # quote mark ("") it read every later review that has one as broken rows.
+            delimiter = csv.Sniffer().sniff(text[:20000], delimiters=",;\t").delimiter
         except csv.Error:
-            dialect = csv.excel
-        rows = list(csv.DictReader(io.StringIO(text, newline=""), dialect=dialect))
+            delimiter = ","
+        csv.field_size_limit(max(csv.field_size_limit(), MAX_CSV_FIELD))
+        rows = list(csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter))
         app = {"name": app_name or path.stem}
     else:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -592,15 +736,20 @@ def load_file(path: Path, app_name: str | None) -> dict:
 # --------------------------------------------------------------------------- main
 
 
+def _on(host: str, *domains: str) -> bool:
+    """The host is one of the domains or a subdomain of one (evilsteamcommunity.com is neither)."""
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
 def fetch(url: str, max_reviews: int, country: str | None, lang: str | None, since: str | None = None) -> dict:
     if not web_url(url):
         raise UnsupportedSource("give an http(s) link to a review page, or a local export with --from-file")
     host = (urllib.parse.urlparse(url).hostname or "").lower()
-    if host.endswith("apps.apple.com") or host.endswith("itunes.apple.com"):
+    if _on(host, "apps.apple.com", "itunes.apple.com"):
         return fetch_apple(url, max_reviews, country, since)
-    if host.endswith("play.google.com"):
+    if _on(host, "play.google.com"):
         return fetch_google_play(url, max_reviews, country, lang, since)
-    if host.endswith("store.steampowered.com") or host.endswith("steamcommunity.com"):
+    if _on(host, "store.steampowered.com", "steamcommunity.com"):
         return fetch_steam(url, max_reviews, lang, since)
     return fetch_jsonld(url, max_reviews)
 
@@ -614,7 +763,7 @@ def main() -> int:
     parser.add_argument("--max", type=int, help="maximum reviews to keep (default 300 for a link; every review in a --from-file export)")
     parser.add_argument("--country", help="store country code, e.g. us, gb (default: from URL or us)")
     parser.add_argument("--lang", help="review language for Google Play/Steam (default: from URL or en)")
-    parser.add_argument("--since", help="only reviews on/after this date (YYYY-MM-DD); pages back to it, then samples --max evenly across the window")
+    parser.add_argument("--since", type=since_arg, help="only reviews on/after this date (YYYY-MM-DD); pages back to it, then samples --max evenly across the window")
     parser.add_argument("--fetch-limit", type=int, default=5000, help="with --since, stop paging back after this many reviews (default 5000)")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
@@ -625,9 +774,10 @@ def main() -> int:
         parser.error("--max must be at least 1")
     if args.max is None and not args.from_file:
         args.max = 300
+    # With --since, page back far enough to cover the window, and never fetch fewer than --max asks for.
+    # (An export is read whole, and --max may be unset for one.)
+    limit = max(args.fetch_limit, args.max or 0) if args.since else args.max
     try:
-        # With --since, page back far enough to cover the window, and never fetch fewer than --max asks for.
-        limit = max(args.fetch_limit, args.max) if args.since else args.max
         data = load_file(args.from_file, args.app_name) if args.from_file else fetch(args.url, limit, args.country, args.lang, args.since)
     except UnsupportedSource as error:
         print(f"UNSUPPORTED: {error}", file=sys.stderr)
@@ -635,6 +785,14 @@ def main() -> int:
     except NoReviews as error:
         print(f"NO REVIEWS: {error}", file=sys.stderr)
         return 3
+    except urllib.error.HTTPError as error:
+        print(f"NO REVIEWS: the store answered HTTP {error.code} ({error.reason}). Check the link, or try again later; nothing written.", file=sys.stderr)
+        return 3
+    except OSError as error:  # offline, DNS failure, refused or reset connection, socket timeout
+        reason = getattr(error, "reason", None) or error
+        print(f"NO REVIEWS: could not reach the store ({reason}). Check the internet connection and the link, then try again; nothing written.", file=sys.stderr)
+        return 3
+    data["app"] = plain_app(data["app"])
 
     seen: set[str] = set()
     reviews = []
@@ -658,7 +816,7 @@ def main() -> int:
             continue
         seen.add(review["id"])
         reviews.append(review)
-    fetched = len(reviews)
+    fetched, every = len(reviews), reviews
     oldest = min((r["date"] for r in reviews if r.get("date")), default=None)
     if args.since:
         reviews, data["app"]["sort"] = window(reviews, args.since, args.max or len(reviews))
@@ -671,7 +829,19 @@ def main() -> int:
     data["reviews"] = reviews
     if not reviews:
         # An empty reviews.json would run through triage as a report about nothing.
-        print(f"NO REVIEWS: {'the file' if args.from_file else 'the page'} gave no reviews with text; nothing written.", file=sys.stderr)
+        source = "the file" if args.from_file else "the page"
+        if args.since and fetched:
+            # Say why the window is empty: an export's US-style dates (09/20/2026) count as undated, for one.
+            undated_count = sum(not r.get("date") for r in every)
+            newest = max((r["date"][:10] for r in every if r.get("date")), default=None)
+            why = []
+            if undated_count:
+                why.append(f"{undated_count:,} have no YYYY-MM-DD date")
+            if newest:
+                why.append(f"the newest dated one is from {newest}")
+            print(f"NO REVIEWS: {source} gave {fetched:,} reviews, but none dated on or after {args.since} ({'; '.join(why)}); nothing written.", file=sys.stderr)
+        else:
+            print(f"NO REVIEWS: {source} gave no reviews with text; nothing written.", file=sys.stderr)
         return 3
     data["fetched_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 

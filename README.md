@@ -124,8 +124,8 @@ only; Claude's own steps (drafting product areas, writing the summary) add a few
 - Google Play and Steam: up to 10,000 per run. Exports: any size up to 10,000.
 - Over 10,000, `triage.py` stops before calling the model and suggests an even sample across
   a date window (`--since`). `--allow-large` runs them all; the report gets slow to open.
-- Answers are saved every 500 reviews, so rerunning an interrupted run asks Jev only for the
-  reviews that are left.
+- Answers are saved every 500 reviews and when a run is stopped or loses its connection, so
+  rerunning an interrupted run asks Jev only for the reviews that are left.
 
 ## Layout
 
@@ -154,21 +154,30 @@ only; Claude's own steps (drafting product areas, writing the summary) add a few
   outside request is the Google Fonts stylesheet.
 - **Your API key.** The TypeSafe SDK reads `TYPESAFE_API_KEY` from your environment. No
   script prints it or writes it to a file. Don't paste it into chat.
+- **Keep Claude Code's permission prompts on** (not a bypass mode such as
+  `--dangerously-skip-permissions`) while you use this skill. Review text is written by
+  strangers and reaches Claude, and the prompts make any command wait for your OK.
 - **Reviews are untrusted input.** Anyone can write a review, so the scripts treat review
   text as hostile:
   - every field is escaped in `report.html`;
   - the report's Content-Security-Policy lets only its own script run;
   - CSV cells that start like a spreadsheet formula (`=`, `+`, `-`, `@`) get a leading
     apostrophe, in both `review_labels.csv` and the report's Download CSV;
+  - in `brief.md`, the code's labels come first and each quote is a JSON string, so a review
+    can't pass off its own words as labels; every line the scripts print starts with the
+    code's own text, and the report is opened without a shell;
   - Claude is told to read reviews as data and never follow instructions inside them. This
     lowers the risk from a malicious review but can't rule it out.
 - **Fetching.** Only public `http(s)` links are fetched: never `file://` or `ftp://`, and
-  never local or private network addresses, including through a redirect. A response over
-  25 MB or slower than 2 minutes is refused. For an export, only the file's name is
-  recorded, not its folder.
-- **Input checks.** Every field from a page or export becomes one line of plain text. Dates
-  must be plausible `YYYY-MM-DD` dates and versions must look like versions; anything else
-  is dropped rather than guessed.
+  never local or private network addresses, including through a redirect. The address is
+  checked just before the request, so a domain built to switch addresses between the check
+  and the connection (DNS rebinding) could still reach one. A response over 25 MB, or a
+  request that takes over 2 minutes from start to finish, is refused. For an export, only
+  the file's name is recorded, not its folder.
+- **Input checks.** Every field from a page or export, including the app's name and
+  description, becomes one line of plain text, with control characters (such as terminal
+  escape codes) and right-to-left overrides removed. Dates must be plausible `YYYY-MM-DD`
+  dates and versions must look like versions; anything else is dropped rather than guessed.
 - **Before you share a report**, remember it contains every analyzed review in full. A
   reviewer may have included personal details such as an email address or order number.
 - **Private exports.** If you load support tickets or CRM feedback with `--from-file`, their

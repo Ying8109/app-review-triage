@@ -317,7 +317,8 @@ def glossary(summary: dict) -> str:
         ("By month", "Each bar is the share of that month's reviews (or week's, for short windows) reporting a problem in the area, "
          "on one scale for all areas. Faded bars: periods with fewer than 20 reviews."),
         ("Fewer / more lately", "Complaints about the area fell (or rose) between the earlier and later half of the reviews by more "
-         "than chance would usually explain (one-sided Fisher exact test, p < 0.025). A prompt to check releases or analytics, not proof."),
+         "than chance would usually explain (one-sided Fisher exact test, p < 0.025 after a Holm adjustment for the number of areas "
+         "tested, so a report rarely flags an area by chance). A prompt to check releases or analytics, not proof."),
         ("Issues", "Reviews reporting a problem in that area, and their share of all reviews. A review can count in several areas."),
         ("Severity", "The average on a 0–3 scale: 1 minor, 2 degraded, 3 blocking."),
         *((name.capitalize(), LABELS[name]) for name in ("blocking", "degraded", "minor")),
@@ -393,19 +394,24 @@ def rank_cell(a: dict, rank: int, n_areas: int) -> str:
             f'<span class="rr-dot" style="left:{x(rank):.1f}%"></span></span><span class="rr-val">{label}</span></span>')
 
 
+def p_text(p: float) -> str:
+    return "p < 0.001" if p < 0.001 else f"p = {p:.3f}"  # with thousands of reviews p can round to 0
+
+
 def trend_note(t: dict | None, split: str) -> tuple[str, str]:
     """(tag shown by the area name, sentence for the area body) about complaints before vs since the split date."""
     if not t:
         return "", ""
     when = day_label(split)
     counts = f"before vs since {when}: {t['earlier']} vs {t['later']}"
+    tests = t.get("tests") or 1
+    adjusted = f" adjusted for {tests} areas tested" if tests > 1 else ""
     if not t["direction"]:
-        clear = f"no clear change (p = {t['p']:.2f})" if t["p"] is not None else "too few to compare"
+        clear = f"no clear change (p = {t['p']:.2f}{adjusted})" if t["p"] is not None else "too few to compare"
         return "", f"{counts[0].upper()}{counts[1:]}, {clear}."
     tag, advice = (("Fewer lately", "Check whether a fix or change shipped before acting on it.") if t["direction"] == "fewer"
                    else ("More lately", "Check what changed in recent releases."))
-    p = "p < 0.001" if t["p"] < 0.001 else f"p = {t['p']:.3f}"  # with thousands of reviews p can round to 0
-    sentence = f"{tag}, {counts} ({p}, unlikely by chance). {advice}"
+    sentence = f"{tag}, {counts} ({p_text(t['p'])}{adjusted}, unlikely by chance). {advice}"
     return f'<span class="trend {t["direction"]}" data-tip="{esc(sentence)}">{tag}</span>', esc(sentence)
 
 
@@ -503,7 +509,7 @@ def areas_csv(summary: dict) -> dict:
                "Share of all reviews", "Share of problem reviews", "Mean severity (0-3)", "Blocking", "Churn risk", "Since update",
                "Bug reports", "Feature requests", "Praise reviews", "Borderline (not counted)", "Recommended" if THUMBS else "Mean rating"]
     if timeline:
-        columns += ["Trend", f"Complaints before {when}", f"Complaints since {when}", "Trend p-value"]
+        columns += ["Trend", f"Complaints before {when}", f"Complaints since {when}", "Trend p-value (Holm-adjusted)"]
         columns += [f'{b["label"]} complaints (of {b["reviews"]} reviews)' for b in buckets]
     rows = []
     for rank, a in enumerate(summary["areas"], 1):
@@ -943,8 +949,8 @@ if(t.closest('.view-report'))setView(t.closest('section'),'report')}
 // CSV view and download. Each section's rows are embedded as JSON; the grid is built the first time it's shown.
 const csvData=k=>JSON.parse(document.getElementById('csv-'+k).textContent);
 function csvText(d){const cell=v=>{let s=v==null?'':String(v);
-// A cell starting like a formula would run in a spreadsheet; review text is written by strangers.
-if(/^[\t\r]|^\s*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(s))s="'"+s;return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
+// A cell starting like a formula would run in a spreadsheet; review text is written by strangers. Same rule as triage.spreadsheet_safe.
+if(/^[\t\r]|^[\s\u200B-\u200F\uFEFF]*[=+\-@\uFF1D\uFF0B\uFF0D\uFF20]/.test(s))s="'"+s;return /[",\r\n]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s};
 return '\ufeff'+[d.columns,...d.rows].map(r=>r.map(cell).join(',')).join('\r\n')+'\r\n'}
 document.querySelectorAll('.dl').forEach(b=>b.addEventListener('click',()=>{const d=csvData(b.dataset.csv),
 url=URL.createObjectURL(new Blob([csvText(d)],{type:'text/csv;charset=utf-8'})),a=document.createElement('a');
@@ -1062,7 +1068,7 @@ def render_report(summary: dict, narrative: str | None = None) -> str:
         change = {"fewer": "fell", "more": "rose"}.get(t["direction"])
         shares = f'{t["earlier"]} of {e} ({pct(t["earlier"], e)}) before {when} and {t["later"]} of {l} ({pct(t["later"], l)}) since'
         problem_trend = (f'<p class="muted overall-trend"><strong>All areas:</strong> reviews reporting a problem {change} from {shares.replace(" and ", " to ")} '
-                         f'(p = {t["p"]:.3f}).</p>' if change else
+                         f'({p_text(t["p"])}).</p>' if change else
                          f'<p class="muted overall-trend"><strong>All areas:</strong> reviews reporting a problem: {shares}; no clear change.</p>')
     unassigned = summary["unassigned_problems"]
     all_reviews = summary.get("all_reviews") or []  # absent in summaries written before it existed

@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import csv
 import hashlib
 import json
@@ -32,6 +33,8 @@ import os
 import random
 import re
 import shlex
+import signal
+import subprocess
 import sys
 import time
 from collections import Counter, defaultdict
@@ -43,7 +46,7 @@ from statistics import mean
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import jev_questions as Q  # noqa: E402
-from fetch_reviews import coverage_notes, iso_date, utf8_output, version_text  # noqa: E402
+from fetch_reviews import APP_TEXT_FIELDS, coverage_notes, iso_date, one_line, since_arg, utf8_output, version_text  # noqa: E402
 from report_html import is_thumbs, render_report, version_key  # noqa: E402
 
 SKILL_DIR = Path(__file__).resolve().parent.parent
@@ -56,11 +59,11 @@ DEFAULT_MODEL = "jev-1.13.0"
 RANK_RESAMPLES = 500  # bootstrap resamples behind each area's rank range
 # An area is flagged "fewer/more lately" when its complaints shift between the earlier and later
 # half of the reviews more than chance explains: one-sided Fisher exact p < 0.025 (0.05 two-sided),
-# and only with enough complaints to test.
+# Holm-adjusted for the number of areas tested in the report, and only with enough complaints to test.
 TREND_P = 0.025
 TREND_MIN_ISSUES = 6
-# Answers are saved after every batch of this many reviews, so a run that is stopped (a command
-# timeout, a closed laptop, a 402) keeps what it paid for, and the same command resumes it.
+# Answers are saved after every batch of this many reviews, and again when a run is stopped (Ctrl-C,
+# a command timeout, a lost connection, a 402), so the same command resumes it.
 CHECKPOINT_EVERY = 500
 # The largest run tested end to end: 5,000 live reviews took ~85 s and ~$1.55, and the report
 # (~1 KB per review) stays quick in a browser up to about 10,000. Above that it gets slow to
@@ -150,7 +153,7 @@ async def run_jev(app_name: str, reviews: list[dict], questions_for, cache: dict
         minutes = len(todo) * SECONDS_PER_REVIEW / 60
         print(
             f"jev: asking about {len(todo):,} reviews, about {max(1, round(minutes))} min. Answers are saved every "
-            f"{CHECKPOINT_EVERY} reviews; if this stops early, rerun the same command and only the rest is asked.",
+            f"{CHECKPOINT_EVERY} reviews and when the run is stopped; if this stops early, rerun the same command and only the rest is asked.",
             file=sys.stderr,
             flush=True,
         )
@@ -169,11 +172,14 @@ async def run_jev(app_name: str, reviews: list[dict], questions_for, cache: dict
         async with semaphore:
             try:
                 response = await client.system_one(state, missing)
-            except TypeSafeAPIError as error:
-                if getattr(error, "status", None) in FATAL_ERRORS:
+            except TypeSafeError as error:
+                # HTTP errors carry a status. Connection errors and timeouts (a Wi-Fi drop, a laptop that slept) don't,
+                # and they aren't TypeSafeAPIError subclasses: they count as failed reviews too, and a rerun retries them.
+                status = getattr(error, "status", None)
+                if status in FATAL_ERRORS:
                     raise
                 stats["errors"] += 1
-                row["error"] = f"{getattr(error, 'status', '?')}: {error}"
+                row["error"] = f"{status or type(error).__name__}: {error}"
                 return
         tokens = response.usage.input_tokens or 0
         stats["requests"] += 1
@@ -191,6 +197,12 @@ async def run_jev(app_name: str, reviews: list[dict], questions_for, cache: dict
         if checkpoint and answered:
             checkpoint({rid: results[rid] for rid in answered})
 
+    # Ctrl-C and a command timeout's SIGTERM cancel the run here, so the answers that already arrived are saved
+    # below. Without this, SIGTERM ends the process at once (and Python 3.10 doesn't route Ctrl-C here either).
+    loop, task = asyncio.get_running_loop(), asyncio.current_task()
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        with contextlib.suppress(NotImplementedError, RuntimeError, ValueError):  # Windows, or not the main thread
+            loop.add_signal_handler(sig, task.cancel)
     try:
         async with client:
             for start in range(0, len(todo), CHECKPOINT_EVERY):
@@ -203,6 +215,15 @@ async def run_jev(app_name: str, reviews: list[dict], questions_for, cache: dict
             FATAL_ERRORS[getattr(error, "status", None)]
             + " Reports were not rewritten. Answers that arrived before the error are cached, so a rerun asks only the rest."
         )
+    except (asyncio.CancelledError, KeyboardInterrupt):
+        save()
+        sys.exit(
+            "triage stopped before every review was asked, and reports were not rewritten. Answers that arrived are "
+            "cached, so rerunning the same command asks only the rest."
+        )
+    except BaseException:
+        save()  # anything unexpected: keep what was paid for, then show the error
+        raise
     stats["seconds"] = round(time.time() - started, 1)
     return results, stats
 
@@ -381,17 +402,38 @@ def _fisher_tail(earlier: int, n_earlier: int, n_later: int, total: int, upper: 
 
 
 def trend(earlier: int, later: int, n_earlier: int, n_later: int) -> dict:
-    """Did complaints fall ("fewer") or rise ("more") from the earlier to the later half? A prompt to check, not proof."""
+    """Did complaints fall ("fewer") or rise ("more") from the earlier to the later half? A prompt to check, not proof.
+
+    This is one test on its own. When several are read together (one per area), pass them to holm().
+    """
     out = {"earlier": earlier, "later": later, "direction": None, "p": None}
     total = earlier + later
     if total < TREND_MIN_ISSUES or not n_earlier or not n_later:
         return out
     p_fewer = _fisher_tail(earlier, n_earlier, n_later, total, upper=True)
     p_more = _fisher_tail(earlier, n_earlier, n_later, total, upper=False)
-    out["p"] = round(min(p_fewer, p_more), 4)
-    if min(p_fewer, p_more) < TREND_P:
+    out["p"] = min(p_fewer, p_more)
+    if out["p"] < TREND_P:
         out["direction"] = "fewer" if p_fewer < p_more else "more"
+    out["p"] = round(out["p"], 6)
     return out
+
+
+def holm(trends: list[dict]) -> list[dict]:
+    """Holm-adjust the p-values of trends tested together, and keep a direction only where the adjusted p < TREND_P.
+
+    A report tests every area with enough complaints. At 0.025 each with no adjustment, 40% (300 reviews) to 53%
+    (2,000) of simulated 18-area reports flagged at least one area when nothing had changed; with Holm, 3%, and by
+    design at most about 5%. "p" becomes the adjusted value, "tests" the number of areas tested.
+    """
+    tested = sorted((t for t in trends if t["p"] is not None), key=lambda t: t["p"])
+    running = 0.0
+    for i, t in enumerate(tested):
+        running = max(running, min(1.0, (len(tested) - i) * t["p"]))  # step-down: adjusted p's never decrease
+        t["p"], t["tests"] = round(running, 6), len(tested)
+        if running >= TREND_P:
+            t["direction"] = None
+    return trends
 
 
 def time_view(in_scope: list[dict], areas: list[dict]) -> tuple[dict | None, dict[str, dict]]:
@@ -447,6 +489,7 @@ def time_view(in_scope: list[dict], areas: list[dict]) -> tuple[dict | None, dic
             "by_time": counts(hit),
             "trend": trend(sum(map(hit, earlier)), sum(map(hit, later)), len(earlier), len(later)),
         }
+    holm([v["trend"] for v in per_area.values()])  # the areas are read side by side, so they're one family of tests
     return overall, per_area
 
 
@@ -606,6 +649,11 @@ def fmt_version(version) -> str:
 BORDERLINE_FLAGS = {"reports_bug": "bug report", "churn_signal": "churn signal", "requests_feature": "feature request"}
 
 
+def _quoted(text: str) -> str:
+    """A JSON string: the review's own quote marks become \\", so a review can't close the quote and add fake labels."""
+    return json.dumps(text, ensure_ascii=False)
+
+
 def _titled(q: dict, text: str) -> str:
     """The quote with the review's own title in front, as report.html shows it.
 
@@ -615,8 +663,8 @@ def _titled(q: dict, text: str) -> str:
     """
     title = clip(q.get("title") or "", 120)
     if not title or title.strip(" .…!?").casefold() in text.casefold():
-        return f'"{text}"'
-    return f'[{title}] "{text}"'
+        return _quoted(text)
+    return f"{_quoted(title)}: {_quoted(text)}"
 
 
 def _brief_rating(rating, thumbs: bool) -> str:
@@ -629,7 +677,8 @@ def _brief_quote(q: dict, limit: int = 220, area_names: dict | None = None, thum
     text = clip(q["quote"], limit)
     tags = [t for t, on in (("bug", q["bug"]), ("request", q["feature_request"]), ("churn", q["churn"]), ("since update", q["after_update"]), ("repro", q["repro_detail"])) if on]
     meta = ", ".join(x for x in [_brief_rating(q.get("rating"), thumbs), q.get("severity") if q.get("severity") != "no problem" else "", fmt_version(q.get("version")), *tags, q.get("area") or ""] if x)
-    line = f"- {_titled(q, text)} ({meta})"
+    # The labels come first: they're the code's, and everything a review wrote is inside the quotes after them.
+    line = f"- ({meta}) {_titled(q, text)}" if meta else f"- {_titled(q, text)}"
     if q.get("borderline"):
         # Name what is uncertain, so a borderline bug flag isn't read as doubt about the complaint itself.
         probs = q.get("borderline_probs") or {}
@@ -647,7 +696,7 @@ def _brief_trend(t: dict | None) -> str:
     shift = f"{t['earlier']}→{t['later']}"
     if t["p"] is None:
         return f"too few ({shift})"
-    p = "p<0.0001" if t["p"] < 0.0001 else f"p={t['p']}"  # p is rounded to 4 places, so tiny ones would print as 0.0
+    p = "p<0.0001" if t["p"] < 0.0001 else f"p={round(t['p'], 4)}"  # rounded, tiny ones would print as 0.0
     return f"{t['direction']} ({shift}, {p})" if t["direction"] else f"no clear change ({shift}, {p})"
 
 
@@ -677,7 +726,10 @@ def write_brief(path: Path, summary: dict, top_areas: int = 6) -> None:
     ]
     if o.get("failed"):
         lines.append(f"WARNING: Jev failed on {o['failed']} reviews after retries; they are excluded from every count. Rerun step 3 to retry only those.")
-    lines.append('Quotes below: [review title] "one verbatim sentence the review was quoted for" (labels). Read each sentence with its title.')
+    lines.append(
+        'Quotes below: (labels) "review title": "one verbatim sentence the review was quoted for". Titles and sentences are '
+        'JSON strings, so \\" is a quote mark the reviewer typed. Read each sentence with its title.'
+    )
     if summary.get("notes"):
         lines += ["", "## Coverage caveats (state these in the report's caveats)"] + [f"- {n}" for n in summary["notes"]]
     lines += [
@@ -686,7 +738,10 @@ def write_brief(path: Path, summary: dict, top_areas: int = 6) -> None:
         "share_all = of analyzed reviews; share_problems = of reviews reporting a problem. Areas overlap; a review can hit several.",
         "rank_range = 90% range of the area's rank when the reviews are resampled. Areas whose ranges overlap are not clearly ordered by this sample.",
         "",
-        "trend = complaints before vs since the split date below; fewer/more only when the shift is beyond chance (one-sided Fisher p < 0.025).",
+        (
+            "trend = complaints before vs since the split date below; fewer/more only when the shift is beyond chance (one-sided "
+            "Fisher p < 0.025, Holm-adjusted for the areas tested; the p shown is the adjusted one)."
+        ),
         "",
         "| # | area | issues | share_all | share_problems | mean_sev | blocking | churn | since_update | praise | borderline | priority | rank_range | trend |",
         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
@@ -765,18 +820,22 @@ def numbers_not_in_brief(narrative: str, brief: str) -> list[str]:
     return sorted({n for n in numbers(text) if float(n) >= 5 and float(n) not in known}, key=float)
 
 
+FORMULA_START = re.compile(r"[\s\u200b-\u200f\ufeff]*[=+\-@\uff1d\uff0b\uff0d\uff20]")
+
+
 def spreadsheet_safe(value):
     """Text that a spreadsheet could run as a formula gets a leading apostrophe.
 
-    That's =, +, -, @ (or their full-width forms) after any leading spaces, or a leading tab or CR.
+    That's =, +, -, @ (or their full-width forms) after any leading spaces, zero-width characters, or byte
+    order mark, or a leading tab or CR.
 
     Review text is written by strangers, and review_labels.csv is meant to be opened in Excel or Sheets,
     where a review like '=HYPERLINK("http://…")' would otherwise become a live formula. report.html's
-    Download CSV does the same.
+    Download CSV applies the same rule.
     """
     if not isinstance(value, str):
         return value
-    risky = value[:1] in ("\t", "\r") or value.lstrip()[:1] in ("=", "+", "-", "@", "\uff1d", "\uff0b", "\uff0d", "\uff20")
+    risky = value[:1] in ("\t", "\r") or FORMULA_START.match(value)
     return "'" + value if risky else value
 
 
@@ -833,13 +892,12 @@ def load_cache(path: Path) -> dict:
 # ----------------------------------------------------------------- inputs
 
 AREA_ID = re.compile(r"[a-z0-9_]{1,60}")  # ids become question keys, CSV column names, and #area-<id> page anchors
-APP_TEXT_FIELDS = ("name", "category", "description", "current_version", "store", "sort", "country", "url", "rating_scale")
 
 
 def _text(value, limit: int = 100_000) -> str:
-    """One line of plain text: newlines in a field could otherwise start fake headings in brief.md."""
+    """One line of plain text: newlines in a field could otherwise start fake headings in brief.md (see one_line)."""
     text = "" if value is None else value if isinstance(value, str) else str(value)
-    return re.sub(r"\s+", " ", text).strip()[:limit]
+    return one_line(text)[:limit]
 
 
 def _number(value) -> float | None:
@@ -876,7 +934,8 @@ def load_inputs(data, areas) -> tuple[dict, list[dict], list[dict]]:
             "id": _text(r.get("id"), 200) or f"review-{i}",
             "rating": int(rating) if rating is not None and 1 <= rating <= 5 else None,
             "title": _text(r.get("title"), 1000),
-            "text": _text(r.get("text"))[:MAX_REVIEW_CHARS],
+            # Cut at a word with "…", so the report's full review and the CSV show that the text was shortened.
+            "text": clip(_text(r.get("text")), MAX_REVIEW_CHARS),
             "date": iso_date(r.get("date")),
             "version": version_text(r.get("version")),
             "helpful_count": max(0, int(_number(r.get("helpful_count")) or 0)),
@@ -929,6 +988,29 @@ def report_link_lines(report: Path) -> list[str]:
     ]
 
 
+def open_report(report: Path) -> str:
+    """Open the report in the default browser without a shell, so nothing printed is ever run as a command.
+
+    Returns what happened, for the `opened:` line. On Linux without a display (SSH, a container) there is no
+    browser to reach, and Python's webbrowser would start a text browser that waits for keys, so it doesn't try.
+    """
+    path = str(report.resolve())
+    try:
+        if sys.platform == "darwin":
+            done = subprocess.run(["open", path], stdin=subprocess.DEVNULL, capture_output=True, timeout=30, check=False)
+            if done.returncode:
+                return f"no (open exited with {done.returncode}; open the report link instead)"
+        elif sys.platform.startswith("win"):
+            os.startfile(path)  # opens the file with its default app, no shell involved
+        elif os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"):
+            subprocess.Popen(["xdg-open", path], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        else:
+            return "no (no display on this machine; open the report link instead)"
+    except (OSError, subprocess.SubprocessError) as error:
+        return f"no ({error}; open the report link instead)"
+    return "yes, in the default browser"
+
+
 def main() -> int:
     utf8_output()
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -936,27 +1018,35 @@ def main() -> int:
     parser.add_argument("--areas", type=Path, default=DEFAULT_AREAS, help="product-area taxonomy JSON")
     parser.add_argument("--out-dir", type=Path, required=True)
     parser.add_argument("--limit", type=int, help="only triage the first N reviews")
-    parser.add_argument("--since", help="only reviews on/after this date (YYYY-MM-DD)")
+    parser.add_argument("--since", type=since_arg, help="only reviews on/after this date (YYYY-MM-DD)")
     parser.add_argument("--concurrency", type=int, default=16)
     parser.add_argument("--model", default=DEFAULT_MODEL, help=f"Jev model id (default: {DEFAULT_MODEL}; use a fresh --out-dir when changing it)")
     parser.add_argument("--quotes-per-area", type=int, default=6)
     parser.add_argument("--narrative", type=Path, help="markdown summary to place at the top of report.html")
+    parser.add_argument("--open", action="store_true", help="open report.html in the default browser when done")
     parser.add_argument("--allow-large", action="store_true", help=f"triage more than {MAX_REVIEWS:,} reviews (the report gets slow to open)")
     args = parser.parse_args()
     if args.limit is not None and args.limit < 1:
         parser.error("--limit must be at least 1")  # 0 used to mean "no limit" and ran every review
+    if args.concurrency < 1:
+        parser.error("--concurrency must be at least 1")  # 0 waited forever for a free request slot
 
     try:
         data = json.loads(args.reviews.read_text(encoding="utf-8-sig"))
         areas = json.loads(args.areas.read_text(encoding="utf-8-sig"))
         app, reviews, areas = load_inputs(data, areas)
-    except (ValueError, KeyError, TypeError) as error:
+    except RecursionError:
+        sys.exit("cannot read the inputs: a file is nested too deeply to be reviews.json or areas.json")
+    except (OSError, ValueError, KeyError, TypeError) as error:
         sys.exit(f"cannot read the inputs: {error}")
     if args.since:
         dated = sorted((r.get("date") or "")[:10] for r in reviews if r.get("date"))
         if dated and dated[0] > args.since:
             print(f"warning: the reviews only go back to {dated[0]}, not {args.since}; fetch with fetch_reviews.py --since {args.since} to cover the window", file=sys.stderr)
+        before = len(reviews)
         reviews = [r for r in reviews if (r.get("date") or "")[:10] >= args.since]
+        if before and not reviews:
+            sys.exit(f"no reviews to triage: none of the {before:,} reviews is dated on or after {args.since}")
     if args.limit is not None:
         reviews = reviews[: args.limit]
     if not reviews:
@@ -1044,7 +1134,8 @@ def main() -> int:
 
     o = summary["overview"]
     cost = stats["input_tokens"] * PRICE_PER_MTOK / 1_000_000
-    print(f"{app['name']}: {o['reviews_analyzed']} reviews analyzed ({o['off_topic']} off-topic, {len(failed)} failed)")
+    # Every line starts with the code's own words: an app named "open in browser: ..." mustn't look like the line below.
+    print(f"analyzed: {o['reviews_analyzed']} of {o['reviews_total']} reviews ({o['off_topic']} off-topic, {len(failed)} failed) for {app['name']}")
     print(
         f"jev: {stats['requests']} requests, {stats['questions_asked']:,} questions asked, {stats['questions_cached']:,} reused; "
         f"{stats['input_tokens']:,} input tokens this run (~${cost:.3f}), {stats['seconds']}s, model {stats['model']}"
@@ -1058,6 +1149,8 @@ def main() -> int:
     print(f"wrote {args.out_dir}/report.html, brief.md, summary.json, review_labels.csv")
     for line in report_link_lines(args.out_dir / "report.html"):
         print(line)
+    if args.open:
+        print(f"opened: {open_report(args.out_dir / 'report.html')}")
     if narrative:
         unknown = numbers_not_in_brief(narrative, (args.out_dir / "brief.md").read_text(encoding="utf-8"))
         if unknown:

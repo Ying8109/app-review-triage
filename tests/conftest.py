@@ -38,12 +38,15 @@ class FakeJev:
     """Stands in for AsyncTypeSafeClient. Answers are a pure function of (model, review text, question id).
 
     Class attributes are the knobs: `latest` is what "jev-latest" resolves to, `fail_texts` makes
-    reviews containing any of those strings fail with an HTTP error, and `log` records every call.
+    reviews containing any of those strings fail with an HTTP error (`fail_status`; "connection" or
+    "timeout" raise the SDK's errors for a request that got no response), `stop_after` sends this
+    process SIGTERM after that many calls (a command timeout), and `log` records every call.
     """
 
     latest = "jev-1.13.0"
     fail_texts: tuple[str, ...] = ()
-    fail_status = 500
+    fail_status: int | str = 500
+    stop_after: int | None = None
     log: list[dict] = []
 
     def __init__(self, model: str | None = None, **_):
@@ -56,12 +59,24 @@ class FakeJev:
         return False
 
     async def system_one(self, state, questions):
+        import asyncio
+        import os
+        import signal
+
         import httpx2
-        from typesafe_sdk import TypeSafeAPIError
+        from typesafe_sdk import TypeSafeAPIConnectionError, TypeSafeAPIError, TypeSafeAPITimeoutError
 
         text = state["review"].get("text", "") + state["review"].get("title", "")
         FakeJev.log.append({"text": text, "model": self.model, "questions": {qid: type(q).__name__ for qid, q in questions.items()}})
+        if FakeJev.stop_after is not None:
+            if len(FakeJev.log) == FakeJev.stop_after:
+                os.kill(os.getpid(), signal.SIGTERM)
+            await asyncio.sleep(0.002)  # a real request waits on the network, which lets the loop see the signal
         if any(f in text for f in FakeJev.fail_texts):
+            if FakeJev.fail_status == "connection":
+                raise TypeSafeAPIConnectionError("Connection reset by peer")
+            if FakeJev.fail_status == "timeout":
+                raise TypeSafeAPITimeoutError(10.0)
             raise TypeSafeAPIError(FakeJev.fail_status, None, httpx2.Headers())
         answers = {}
         for qid, q in questions.items():
@@ -82,7 +97,7 @@ class FakeJev:
 def fake_jev(monkeypatch):
     import typesafe_sdk
 
-    FakeJev.latest, FakeJev.fail_texts, FakeJev.fail_status, FakeJev.log = "jev-1.13.0", (), 500, []
+    FakeJev.latest, FakeJev.fail_texts, FakeJev.fail_status, FakeJev.stop_after, FakeJev.log = "jev-1.13.0", (), 500, None, []
     monkeypatch.setattr(typesafe_sdk, "AsyncTypeSafeClient", FakeJev)
     return FakeJev
 
